@@ -4,7 +4,6 @@ pub const OUTER_GAP: u16 = 2;
 
 /// Vertical gap between sub-sections inside any tab view.
 /// Always half of OUTER_GAP so inner spacing is subordinate to outer spacing.
-#[allow(dead_code)]
 pub const INNER_GAP: u16 = OUTER_GAP / 2;
 
 #[cfg(test)]

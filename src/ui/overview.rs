@@ -9,20 +9,25 @@ use ratatui::{
 };
 
 use crate::app::AppState;
+use crate::ui::design;
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
-    let chunks = Layout::default()
+    let layout = build_overview_layout(area);
+    render_gauges(f, layout[0], state);
+    render_chart(f, layout[1], state);
+    render_device_summary(f, layout[2], state);
+}
+
+fn build_overview_layout(area: Rect) -> std::rc::Rc<[Rect]> {
+    Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2), // gauges
-            Constraint::Min(8),    // history chart
-            Constraint::Length(2), // device summary
+            Constraint::Length(2), // [0] gauges
+            Constraint::Min(8),    // [1] history chart
+            Constraint::Length(2), // [2] device summary
         ])
-        .split(area);
-
-    render_gauges(f, chunks[0], state);
-    render_chart(f, chunks[1], state);
-    render_device_summary(f, chunks[2], state);
+        .spacing(design::INNER_GAP)
+        .split(area)
 }
 
 // ── Gauges ────────────────────────────────────────────────────────────────────
@@ -34,8 +39,8 @@ fn render_gauges(f: &mut Frame, area: Rect, state: &AppState) {
         .split(area);
 
     let Some(snap) = &state.current else {
-        let p = Paragraph::new(" Waiting for first tick…")
-            .style(Style::default().fg(Color::DarkGray));
+        let p =
+            Paragraph::new(" Waiting for first tick…").style(Style::default().fg(Color::DarkGray));
         f.render_widget(p, area);
         return;
     };
@@ -51,9 +56,19 @@ fn render_gauges(f: &mut Frame, area: Rect, state: &AppState) {
     );
     f.render_widget(
         Gauge::default()
-            .gauge_style(Style::default().fg(ram_color).bg(Color::DarkGray).add_modifier(Modifier::BOLD))
+            .gauge_style(
+                Style::default()
+                    .fg(ram_color)
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            )
             .ratio(ram_ratio)
-            .label(Span::styled(ram_label, Style::default().fg(Color::White).add_modifier(Modifier::BOLD))),
+            .label(Span::styled(
+                ram_label,
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )),
         rows[0],
     );
 
@@ -72,9 +87,19 @@ fn render_gauges(f: &mut Frame, area: Rect, state: &AppState) {
     };
     f.render_widget(
         Gauge::default()
-            .gauge_style(Style::default().fg(swap_color).bg(Color::DarkGray).add_modifier(Modifier::BOLD))
+            .gauge_style(
+                Style::default()
+                    .fg(swap_color)
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            )
             .ratio(swap_ratio)
-            .label(Span::styled(swap_label, Style::default().fg(Color::White).add_modifier(Modifier::BOLD))),
+            .label(Span::styled(
+                swap_label,
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )),
         rows[1],
     );
 }
@@ -95,8 +120,18 @@ fn render_chart(f: &mut Frame, area: Rect, state: &AppState) {
     let start = state.start_time;
     let now_secs = start.elapsed().as_secs_f64();
 
-    let ram_total = state.current.as_ref().map(|s| s.ram.total).unwrap_or(1).max(1);
-    let swap_total = state.current.as_ref().map(|s| s.swap.total).unwrap_or(1).max(1);
+    let ram_total = state
+        .current
+        .as_ref()
+        .map(|s| s.ram.total)
+        .unwrap_or(1)
+        .max(1);
+    let swap_total = state
+        .current
+        .as_ref()
+        .map(|s| s.swap.total)
+        .unwrap_or(1)
+        .max(1);
 
     // Convert history to percentage points for a common 0-100 Y axis
     let ram_data: Vec<(f64, f64)> = state
@@ -151,7 +186,12 @@ fn render_chart(f: &mut Frame, area: Rect, state: &AppState) {
             Block::default()
                 .title(Line::from(vec![
                     Span::raw(" "),
-                    Span::styled("Memory History", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "Memory History",
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw("  "),
                     Span::styled("━━", Style::default().fg(Color::Cyan)),
                     Span::styled(" RAM  ", Style::default().fg(Color::Cyan)),
@@ -203,11 +243,18 @@ fn render_device_summary(f: &mut Frame, area: Rect, state: &AppState) {
     let line = Line::from(vec![
         Span::raw("  "),
         Span::styled("Devices active: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(count.to_string(), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            count.to_string(),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled("   Total swap: ", Style::default().fg(Color::DarkGray)),
         Span::styled(
             human_bytes(total_bytes as f64),
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled("   Uptime: ", Style::default().fg(Color::DarkGray)),
         Span::styled(
@@ -217,4 +264,75 @@ fn render_device_summary(f: &mut Frame, area: Rect, state: &AppState) {
     ]);
 
     f.render_widget(Paragraph::new(line), area);
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::layout::{Constraint, Direction, Layout, Rect};
+    use crate::ui::design::{INNER_GAP, OUTER_GAP};
+    use super::build_overview_layout;
+
+    #[test]
+    fn gauges_start_at_top() {
+        let area = Rect::new(0, 0, 120, 40);
+        let layout = build_overview_layout(area);
+        assert_eq!(layout[0].y,      0);
+        assert_eq!(layout[0].height, 2);
+    }
+
+    #[test]
+    fn chart_starts_after_gauges_plus_inner_gap() {
+        let area = Rect::new(0, 0, 120, 40);
+        let layout = build_overview_layout(area);
+        assert_eq!(layout[1].y, 2 + INNER_GAP);
+    }
+
+    #[test]
+    fn device_summary_occupies_last_two_rows() {
+        let area = Rect::new(0, 0, 120, 40);
+        let layout = build_overview_layout(area);
+        assert_eq!(layout[2].y,      area.height - 2);
+        assert_eq!(layout[2].height, 2);
+    }
+
+    #[test]
+    fn all_sections_span_full_width() {
+        let area = Rect::new(0, 0, 120, 40);
+        let layout = build_overview_layout(area);
+        for rect in layout.iter() {
+            assert_eq!(rect.x,     0);
+            assert_eq!(rect.width, 120);
+        }
+    }
+
+    #[test]
+    fn inner_gap_is_half_of_outer_gap() {
+        assert_eq!(INNER_GAP * 2, OUTER_GAP);
+    }
+
+    #[test]
+    fn layout_stable_on_minimal_terminal() {
+        // minimum: 2 (gauges) + INNER_GAP(1) + 8 (chart Min) + INNER_GAP(1) + 2 (device) = 14
+        let area = Rect::new(0, 0, 40, 14);
+        let layout = build_overview_layout(area);
+        assert_eq!(layout[1].height, 8);
+    }
+
+    #[test]
+    fn spacing_produces_same_result_as_direct_layout_call() {
+        let area = Rect::new(0, 0, 120, 40);
+        let direct = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(2),
+                Constraint::Min(8),
+                Constraint::Length(2),
+            ])
+            .spacing(INNER_GAP)
+            .split(area);
+        let via_helper = build_overview_layout(area);
+        assert_eq!(direct[0], via_helper[0]);
+        assert_eq!(direct[1], via_helper[1]);
+        assert_eq!(direct[2], via_helper[2]);
+    }
 }
