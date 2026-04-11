@@ -69,6 +69,16 @@ Phase 4 → swapon/swapoff via nix, devices UI, root check
 Phase 5 → create-swap wizard, tokio::process::Command, disk space validation
 ```
 
+## Before committing
+
+Run these and fix any issues before creating a commit:
+
+```bash
+cargo build          # must compile clean (zero warnings)
+cargo clippy -- -D warnings  # must pass with no warnings
+cargo test           # all tests must pass
+```
+
 ## Key constraints
 
 - `collector.rs` must only use the `SwapBackend` trait — never import `linux.rs` etc. directly

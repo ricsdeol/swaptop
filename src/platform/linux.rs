@@ -1,0 +1,174 @@
+use std::path::{Path, PathBuf};
+
+use color_eyre::Result;
+use sysinfo::System;
+
+use super::{Capabilities, SwapBackend, SwapDevice, SwapInfo, SwapKind};
+
+pub struct LinuxBackend {
+    sys: System,
+}
+
+impl LinuxBackend {
+    pub fn new() -> Self {
+        let mut sys = System::new_all();
+        sys.refresh_all();
+        Self { sys }
+    }
+}
+
+impl SwapBackend for LinuxBackend {
+    fn system_ram(&mut self) -> Result<SwapInfo> {
+        self.sys.refresh_memory();
+        Ok(SwapInfo::new(self.sys.total_memory(), self.sys.used_memory()))
+    }
+
+    fn system_swap(&mut self) -> Result<SwapInfo> {
+        self.sys.refresh_memory();
+        Ok(SwapInfo::new(self.sys.total_swap(), self.sys.used_swap()))
+    }
+
+    fn swap_devices(&mut self) -> Result<Vec<SwapDevice>> {
+        let content = std::fs::read_to_string("/proc/swaps")?;
+        Ok(parse_proc_swaps(&content))
+    }
+
+    fn process_swap(&self, pid: u32) -> u64 {
+        let content =
+            std::fs::read_to_string(format!("/proc/{pid}/smaps")).unwrap_or_default();
+        content
+            .lines()
+            .filter_map(|l| l.strip_prefix("VmSwap:"))
+            .filter_map(|v| v.split_whitespace().next()?.parse::<u64>().ok())
+            .sum::<u64>()
+            * 1024
+    }
+
+    fn swap_on(&self, _device: &Path) -> Result<()> {
+        color_eyre::eyre::bail!("swap_on not yet implemented (Phase 4)")
+    }
+
+    fn swap_off(&self, _device: &Path) -> Result<()> {
+        color_eyre::eyre::bail!("swap_off not yet implemented (Phase 4)")
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            can_swap_on:     true,
+            can_swap_off:    true,
+            has_per_process: true,
+            has_device_list: true,
+            can_create_swap: true,
+            requires_root:   true,
+        }
+    }
+}
+
+// ── Parsing ───────────────────────────────────────────────────────────────────
+
+/// Parse the contents of `/proc/swaps` into a list of `SwapDevice`s.
+///
+/// Exposed as `pub(crate)` so it can be unit-tested without touching the
+/// filesystem or requiring a real `LinuxBackend`.
+pub(crate) fn parse_proc_swaps(content: &str) -> Vec<SwapDevice> {
+    content.lines().skip(1).filter_map(parse_swap_line).collect()
+}
+
+fn parse_swap_line(line: &str) -> Option<SwapDevice> {
+    let mut parts = line.split_whitespace();
+    let raw_path = parts.next()?;
+    let type_str = parts.next()?;
+    let total_kb = parts.next()?.parse::<u64>().ok()?;
+    let used_kb  = parts.next()?.parse::<u64>().ok()?;
+    let priority = parts.next()?.parse::<i16>().ok()?;
+
+    let path = PathBuf::from(raw_path);
+    let kind = if raw_path.contains("zram") {
+        SwapKind::Zram
+    } else {
+        match type_str {
+            "partition" => SwapKind::Partition,
+            _           => SwapKind::File,
+        }
+    };
+
+    Some(SwapDevice {
+        path,
+        total: total_kb * 1024,
+        used:  used_kb  * 1024,
+        priority,
+        kind,
+        active: true,
+    })
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HEADER: &str =
+        "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
+
+    #[test]
+    fn parse_returns_empty_for_header_only() {
+        let devices = parse_proc_swaps(HEADER);
+        assert!(devices.is_empty());
+    }
+
+    #[test]
+    fn parse_returns_empty_for_blank_content() {
+        assert!(parse_proc_swaps("").is_empty());
+    }
+
+    #[test]
+    fn parse_detects_partition_kind() {
+        let content = format!("{HEADER}/dev/sda2\t\tpartition\t4194300\t102400\t-1\n");
+        let devices = parse_proc_swaps(&content);
+        assert_eq!(devices.len(), 1);
+        assert!(matches!(devices[0].kind, SwapKind::Partition));
+        assert_eq!(devices[0].priority, -1);
+    }
+
+    #[test]
+    fn parse_converts_kilobytes_to_bytes() {
+        let content = format!("{HEADER}/swapfile\t\tfile\t2097152\t512000\t0\n");
+        let devices = parse_proc_swaps(&content);
+        assert_eq!(devices[0].total, 2_097_152 * 1024);
+        assert_eq!(devices[0].used,  512_000   * 1024);
+    }
+
+    #[test]
+    fn parse_detects_zram_kind() {
+        let content = format!("{HEADER}/dev/zram0\t\tpartition\t524284\t0\t100\n");
+        let devices = parse_proc_swaps(&content);
+        assert_eq!(devices.len(), 1);
+        assert!(matches!(devices[0].kind, SwapKind::Zram));
+    }
+
+    #[test]
+    fn parse_detects_file_kind() {
+        let content = format!("{HEADER}/swapfile\t\tfile\t1048572\t0\t0\n");
+        let devices = parse_proc_swaps(&content);
+        assert!(matches!(devices[0].kind, SwapKind::File));
+    }
+
+    #[test]
+    fn parse_skips_malformed_lines() {
+        let content = format!("{HEADER}bad line here\n");
+        assert!(parse_proc_swaps(&content).is_empty());
+    }
+
+    #[test]
+    fn parse_handles_multiple_devices() {
+        let content = format!(
+            "{HEADER}\
+             /dev/sda2\t\tpartition\t4194300\t102400\t-1\n\
+             /swapfile\t\tfile\t2097152\t0\t0\n\
+             /dev/zram0\t\tpartition\t524284\t200000\t100\n"
+        );
+        let devices = parse_proc_swaps(&content);
+        assert_eq!(devices.len(), 3);
+    }
+}
