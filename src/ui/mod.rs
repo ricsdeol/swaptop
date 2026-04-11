@@ -2,8 +2,6 @@ mod design;
 mod overview;
 mod statusbar;
 
-const SECTION_VERTICAL_GAP: u16 = 1;
-
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -21,23 +19,22 @@ pub fn render(f: &mut Frame, state: &AppState) {
     render_tabbar(f, layout[0], state);
 
     match state.active_tab {
-        Tab::Overview => overview::render(f, layout[2], state),
-        _ => render_coming_soon(f, layout[2]),
+        Tab::Overview => overview::render(f, layout[1], state),
+        _ => render_coming_soon(f, layout[1]),
     }
 
-    statusbar::render(f, layout[4], state);
+    statusbar::render(f, layout[2], state);
 }
 
 fn build_layout(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),                    // [0] tab bar
-            Constraint::Length(SECTION_VERTICAL_GAP), // [1] gap
-            Constraint::Min(0),                       // [2] content
-            Constraint::Length(SECTION_VERTICAL_GAP), // [3] gap
-            Constraint::Length(1),                    // [4] status bar
+            Constraint::Length(3), // [0] tab bar
+            Constraint::Min(0),    // [1] content
+            Constraint::Length(1), // [2] status bar
         ])
+        .spacing(design::OUTER_GAP)
         .split(area)
 }
 
@@ -101,8 +98,8 @@ fn render_coming_soon(f: &mut Frame, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::layout::Rect;
-    use super::SECTION_VERTICAL_GAP;
+    use ratatui::layout::{Constraint, Direction, Layout, Rect};
+    use crate::ui::design::{INNER_GAP, OUTER_GAP};
 
     fn build_layout(area: Rect) -> std::rc::Rc<[Rect]> {
         super::build_layout(area)
@@ -117,35 +114,18 @@ mod tests {
     }
 
     #[test]
-    fn gap_after_tabbar_has_correct_position() {
+    fn content_starts_after_tabbar_plus_outer_gap() {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_layout(area);
-        assert_eq!(layout[1].y,      3);
-        assert_eq!(layout[1].height, SECTION_VERTICAL_GAP);
-    }
-
-    #[test]
-    fn content_starts_after_tabbar_and_gap() {
-        let area = Rect::new(0, 0, 120, 40);
-        let layout = build_layout(area);
-        assert_eq!(layout[2].y, 3 + SECTION_VERTICAL_GAP);
-    }
-
-    #[test]
-    fn gap_before_statusbar_has_correct_position() {
-        let area = Rect::new(0, 0, 120, 40);
-        let layout = build_layout(area);
-        let expected_gap_y = area.height - 1 - SECTION_VERTICAL_GAP;
-        assert_eq!(layout[3].y,      expected_gap_y);
-        assert_eq!(layout[3].height, SECTION_VERTICAL_GAP);
+        assert_eq!(layout[1].y, 3 + OUTER_GAP);
     }
 
     #[test]
     fn statusbar_is_last_row() {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_layout(area);
-        assert_eq!(layout[4].y,      area.height - 1);
-        assert_eq!(layout[4].height, 1);
+        assert_eq!(layout[2].y,      area.height - 1);
+        assert_eq!(layout[2].height, 1);
     }
 
     #[test]
@@ -160,8 +140,31 @@ mod tests {
 
     #[test]
     fn layout_is_stable_on_minimal_terminal() {
-        let area = Rect::new(0, 0, 40, 6);
+        // minimum rows: 3 (tabbar) + OUTER_GAP(2) + 0 (content) + OUTER_GAP(2) + 1 (statusbar) = 8
+        let area = Rect::new(0, 0, 40, 8);
         let layout = build_layout(area);
-        assert_eq!(layout[2].height, 0);
+        assert_eq!(layout[1].height, 0);
+    }
+
+    #[test]
+    fn inner_gap_accessible_and_half_of_outer() {
+        assert_eq!(INNER_GAP * 2, OUTER_GAP);
+    }
+
+    #[test]
+    fn spacing_produces_correct_positions() {
+        let area = Rect::new(0, 0, 120, 40);
+        let with_spacing = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .spacing(OUTER_GAP)
+            .split(area);
+        assert_eq!(with_spacing[0].y, 0);
+        assert_eq!(with_spacing[1].y, 3 + OUTER_GAP);
+        assert_eq!(with_spacing[2].y, area.height - 1);
     }
 }

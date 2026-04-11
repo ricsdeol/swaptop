@@ -1,6 +1,5 @@
 /// Vertical gap between the main chrome sections (tab bar ↕ content ↕ status bar).
 /// Must be ≥ 2 so that INNER_GAP = OUTER_GAP / 2 ≥ 1.
-#[allow(dead_code)]
 pub const OUTER_GAP: u16 = 2;
 
 /// Vertical gap between sub-sections inside any tab view.
