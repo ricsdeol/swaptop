@@ -214,7 +214,7 @@ build_release_notes() {
     echo "" >> "$notes_file"
     echo '```bash' >> "$notes_file"
     echo "# Download the binary for your platform from the assets below" >> "$notes_file"
-    echo "curl -LO https://github.com/\$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/download/${tag}/swaptop-x86_64-unknown-linux-gnu.tar.gz" >> "$notes_file"
+    echo "curl -LO https://github.com/ricsdeol/swaptop/releases/download/${tag}/swaptop-x86_64-unknown-linux-gnu.tar.gz" >> "$notes_file"
     echo "tar xzf swaptop-x86_64-unknown-linux-gnu.tar.gz" >> "$notes_file"
     echo "sudo mv swaptop /usr/local/bin/" >> "$notes_file"
     echo '```' >> "$notes_file"
@@ -222,7 +222,7 @@ build_release_notes() {
     echo "#### From source" >> "$notes_file"
     echo "" >> "$notes_file"
     echo '```bash' >> "$notes_file"
-    echo "cargo install --git https://github.com/\$(gh repo view --json nameWithOwner -q .nameWithOwner) --tag ${tag}" >> "$notes_file"
+    echo "cargo install --git https://github.com/ricsdeol/swaptop --tag ${tag}" >> "$notes_file"
     echo '```' >> "$notes_file"
     echo "" >> "$notes_file"
     echo "### Notes" >> "$notes_file"
@@ -233,7 +233,7 @@ build_release_notes() {
     echo "" >> "$notes_file"
     echo "---" >> "$notes_file"
     echo "" >> "$notes_file"
-    echo "**Full Changelog**: https://github.com/\$(gh repo view --json nameWithOwner -q .nameWithOwner)/compare/...${tag}" >> "$notes_file"
+    echo "**Full Changelog**: https://github.com/ricsdeol/swaptop/compare/...${tag}" >> "$notes_file"
 }
 
 # ─── Create GitHub release ───────────────────────────────────────────────────
