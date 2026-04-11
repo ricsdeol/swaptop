@@ -1,0 +1,8 @@
+{
+  "enabledPlugins": {
+    "rust-analyzer@claude-code-lsps": true
+  },
+  "permissions": {
+    "allow": ["Bash(cargo *)", "Skill(commit-commands:commit)"]
+  }
+}
