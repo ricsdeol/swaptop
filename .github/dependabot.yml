@@ -1,11 +1,68 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Dependabot configuration for swaptop
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "cargo"
+    directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Sao_Paulo"
+
+    # Limit the number of open PRs at once
+    open-pull-requests-limit: 10
+
+    # Target branch for all PRs
+    target-branch: "main"
+
+    # Conventional commit prefix for dependency update PRs
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+
+    # Labels applied to every dependency PR
+    labels:
+      - "dependencies"
+      - "rust"
+
+    # Group all updates into a single weekly PR
+    groups:
+      all-updates:
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+      # Group TUI/rendering crates
+      tui:
+        patterns:
+          - "ratatui*"
+          - "crossterm"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+      # Group async runtime crates
+      async-runtime:
+        patterns:
+          - "tokio"
+          - "tokio-*"
+          - "futures*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+      # Group system/platform crates
+      platform:
+        patterns:
+          - "sysinfo"
+          - "nix"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
