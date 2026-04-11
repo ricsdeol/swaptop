@@ -11,9 +11,11 @@ device control, and swap file creation.
 
 ## Screenshot
 
-Overview tab showing RAM and swap gauges, history chart, and active swap device summary.
+![swaptop overview](docs/overview.jpg)
 
-![swaptop overview screenshot](docs/overview.png)
+*Overview tab — RAM and swap gauges (color-coded by usage), 120-second rolling
+history chart with braille-resolution lines, device summary and uptime footer,
+and the keybinding status bar at the bottom.*
 
 ---
 
