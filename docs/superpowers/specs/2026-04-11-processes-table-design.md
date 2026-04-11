@@ -146,15 +146,15 @@ After any tab-change action, `processes_active` is updated immediately.
 ### Layout
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│ Filter: [firefox_____________]    (only visible in filter_mode)│
-├──────────────────────────────────────────────────────────────┤
-│  PID   Nome            Usuário    RSS       Swap ▾     CPU%  │  ← header
-│ ─────────────────────────────────────────────────────────── │
-│ 12345  firefox         ricardo    512.3 MB  128.0 MB  12.5% │  ← selected (highlight)
-│  3821  code            ricardo    256.1 MB   64.0 MB   4.2% │
-│    42  kswapd0         root         0.0  B    0.0  B   0.1% │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ Filter: [firefox_____________]    (only visible in filter_mode) │
+│ ─────────────────────────────────────────────────────────────── │
+│  PID   Nome            Usuário    RSS       Swap ▾     CPU%     │  ← header
+│ ─────────────────────────────────────────────────────────────── │
+│ 12345  firefox         ricardo    512.3 MB  128.0 MB  12.5%     │  ← selected (highlight)
+│  3821  code            ricardo    256.1 MB   64.0 MB   4.2%     │
+│    42  kswapd0         root         0.0  B    0.0  B   0.1%     │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Widget: `ratatui::widgets::Table` + `TableState`
