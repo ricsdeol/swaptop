@@ -183,11 +183,11 @@ After any tab-change action, `processes_active` is updated immediately.
 
 When `capabilities.has_per_process == false`:
 - Swap column cells render `"—"` in `Color::DarkGray`
-- Banner above table: `"Swap por processo indisponível nesta plataforma"` in yellow
+- Banner above table: `"Swap usage per process is not available on this platform"` in yellow
 
 ### Empty state
 
-When filtered list is empty: `Paragraph::new("Nenhum processo encontrado")` centered in content area.
+When filtered list is empty: `Paragraph::new("No processes found")` centered in content area.
 
 ### Filter bar (when `filter_mode == true`)
 
@@ -203,6 +203,7 @@ Cursor simulated with trailing `_`. Height: 3 rows (with border).
 
 A separate file `docs/processes-screen.md` to be created alongside implementation,
 covering: navigation, sorting, filtering, keybindings, and platform limitations.
+All user-facing text (banners, empty states, labels, error messages) must be in English.
 
 ---
 
