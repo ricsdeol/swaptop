@@ -1,6 +1,9 @@
 mod overview;
 mod statusbar;
 
+const OUTER_HORIZONTAL_MARGIN: u16 = 15;
+const CONTENT_HORIZONTAL_MARGIN: u16 = 10;
+
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Margin},
@@ -13,7 +16,7 @@ use crate::app::{AppState, Tab};
 
 pub fn render(f: &mut Frame, state: &AppState) {
     // 15-cell outer margin: tabbar, content, and statusbar all inset from terminal edges
-    let area = f.area().inner(Margin { horizontal: 15, vertical: 0 });
+    let area = f.area().inner(Margin { horizontal: OUTER_HORIZONTAL_MARGIN, vertical: 0 });
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
@@ -27,7 +30,7 @@ pub fn render(f: &mut Frame, state: &AppState) {
     render_tabbar(f, layout[0], state);
 
     // 10-cell additional margin for the active tab content area
-    let content_area = layout[1].inner(Margin { horizontal: 10, vertical: 0 });
+    let content_area = layout[1].inner(Margin { horizontal: CONTENT_HORIZONTAL_MARGIN, vertical: 0 });
 
     match state.active_tab {
         Tab::Overview => overview::render(f, content_area, state),
@@ -98,12 +101,13 @@ fn render_coming_soon(f: &mut Frame, area: ratatui::layout::Rect) {
 #[cfg(test)]
 mod tests {
     use ratatui::layout::{Margin, Rect};
+    use super::{OUTER_HORIZONTAL_MARGIN, CONTENT_HORIZONTAL_MARGIN};
 
     #[test]
     fn outer_margin_shrinks_width_by_twice_margin() {
         let full = Rect::new(0, 0, 120, 40);
-        let inner = full.inner(Margin { horizontal: 15, vertical: 0 });
-        assert_eq!(inner.x,      15);
+        let inner = full.inner(Margin { horizontal: OUTER_HORIZONTAL_MARGIN, vertical: 0 });
+        assert_eq!(inner.x,      OUTER_HORIZONTAL_MARGIN);
         assert_eq!(inner.width,  90);   // 120 - 15*2
         assert_eq!(inner.y,      0);
         assert_eq!(inner.height, 40);   // unchanged
@@ -112,14 +116,14 @@ mod tests {
     #[test]
     fn outer_margin_clamps_on_narrow_terminal() {
         let narrow = Rect::new(0, 0, 20, 40);
-        let inner  = narrow.inner(Margin { horizontal: 15, vertical: 0 });
+        let inner  = narrow.inner(Margin { horizontal: OUTER_HORIZONTAL_MARGIN, vertical: 0 });
         assert_eq!(inner.width, 0);
     }
 
     #[test]
     fn content_margin_further_shrinks_content_area() {
-        let after_outer = Rect::new(15, 0, 90, 36);
-        let content = after_outer.inner(Margin { horizontal: 10, vertical: 0 });
+        let after_outer = Rect::new(OUTER_HORIZONTAL_MARGIN, 0, 90, 36);
+        let content = after_outer.inner(Margin { horizontal: CONTENT_HORIZONTAL_MARGIN, vertical: 0 });
         assert_eq!(content.x,      25);  // 15 + 10
         assert_eq!(content.width,  70);  // 90 - 10*2
         assert_eq!(content.y,      0);
@@ -128,8 +132,18 @@ mod tests {
 
     #[test]
     fn content_margin_clamps_on_narrow_content_area() {
-        let narrow_content = Rect::new(15, 0, 10, 36);
-        let content = narrow_content.inner(Margin { horizontal: 10, vertical: 0 });
+        let narrow_content = Rect::new(OUTER_HORIZONTAL_MARGIN, 0, 10, 36);
+        let content = narrow_content.inner(Margin { horizontal: CONTENT_HORIZONTAL_MARGIN, vertical: 0 });
         assert_eq!(content.width, 0);
+    }
+
+    #[test]
+    fn total_horizontal_inset_is_sum_of_both_margins() {
+        let full = Rect::new(0, 0, 200, 50);
+        let after_outer  = full.inner(Margin { horizontal: OUTER_HORIZONTAL_MARGIN, vertical: 0 });
+        let after_content = after_outer.inner(Margin { horizontal: CONTENT_HORIZONTAL_MARGIN, vertical: 0 });
+        let total_margin = OUTER_HORIZONTAL_MARGIN + CONTENT_HORIZONTAL_MARGIN;
+        assert_eq!(after_content.x,     total_margin);
+        assert_eq!(after_content.width, 200 - total_margin * 2);
     }
 }
