@@ -1,19 +1,21 @@
 use std::path::{Path, PathBuf};
 
 use color_eyre::Result;
-use sysinfo::System;
+use sysinfo::{System, Users};
 
-use super::{Capabilities, SwapBackend, SwapDevice, SwapInfo, SwapKind};
+use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind};
 
 pub struct LinuxBackend {
-    sys: System,
+    sys:   System,
+    users: Users,
 }
 
 impl LinuxBackend {
     pub fn new() -> Self {
         let mut sys = System::new_all();
         sys.refresh_all();
-        Self { sys }
+        let users = Users::new_with_refreshed_list();
+        Self { sys, users }
     }
 }
 
@@ -31,6 +33,33 @@ impl SwapBackend for LinuxBackend {
     fn swap_devices(&mut self) -> Result<Vec<SwapDevice>> {
         let content = std::fs::read_to_string("/proc/swaps")?;
         Ok(parse_proc_swaps(&content))
+    }
+
+    fn process_list(&mut self) -> Result<Vec<ProcessRow>> {
+        self.sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        let rows = self
+            .sys
+            .processes()
+            .values()
+            .filter(|p| !is_kernel_thread(&p.name().to_string_lossy()))
+            .map(|p| {
+                let user = p
+                    .user_id()
+                    .and_then(|uid| self.users.get_user_by_id(uid))
+                    .map(|u| u.name().to_string())
+                    .unwrap_or_default();
+                ProcessRow {
+                    pid:     p.pid().as_u32(),
+                    name:    p.name().to_string_lossy().into_owned(),
+                    user,
+                    rss:     p.memory(),
+                    vms:     p.virtual_memory(),
+                    swap:    0,
+                    cpu_pct: p.cpu_usage(),
+                }
+            })
+            .collect();
+        Ok(rows)
     }
 
     fn process_swap(&self, pid: u32) -> u64 {
@@ -90,6 +119,10 @@ impl SwapBackend for LinuxBackend {
             requires_root:   true,
         }
     }
+}
+
+pub(crate) fn is_kernel_thread(name: &str) -> bool {
+    name.starts_with('[') && name.ends_with(']')
 }
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
@@ -198,5 +231,20 @@ mod tests {
         );
         let devices = parse_proc_swaps(&content);
         assert_eq!(devices.len(), 3);
+    }
+
+    #[test]
+    fn kernel_thread_filter_matches_bracketed_names() {
+        assert!(is_kernel_thread("[kworker/0:0]"));
+        assert!(is_kernel_thread("[migration/0]"));
+        assert!(is_kernel_thread("[kswapd0]"));
+    }
+
+    #[test]
+    fn kernel_thread_filter_rejects_regular_processes() {
+        assert!(!is_kernel_thread("firefox"));
+        assert!(!is_kernel_thread("kswapd0"));
+        assert!(!is_kernel_thread("[incomplete"));
+        assert!(!is_kernel_thread("trailing]"));
     }
 }
