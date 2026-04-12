@@ -22,9 +22,6 @@ impl SwapBackend for MacosBackend {
     fn swap_devices(&mut self) -> Result<Vec<SwapDevice>> {
         color_eyre::eyre::bail!("macOS backend not yet implemented")
     }
-    fn process_swap(&self, _pid: u32) -> u64 {
-        0
-    }
     fn swap_on(&self, _device: &Path) -> Result<()> {
         color_eyre::eyre::bail!("controlled by dynamic_pager on macOS")
     }

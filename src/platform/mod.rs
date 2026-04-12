@@ -21,7 +21,6 @@ pub trait SwapBackend: Send + Sync {
     fn process_list(&mut self) -> Result<Vec<ProcessRow>> {
         Ok(vec![])
     }
-    fn process_swap(&self, pid: u32) -> u64;
     fn swap_on(&self, device: &Path) -> Result<()>;
     fn swap_off(&self, device: &Path) -> Result<()>;
     fn swap_reset(&self, device: &Path) -> Result<()> {

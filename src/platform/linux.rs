@@ -62,17 +62,6 @@ impl SwapBackend for LinuxBackend {
         Ok(rows)
     }
 
-    fn process_swap(&self, pid: u32) -> u64 {
-        let content =
-            std::fs::read_to_string(format!("/proc/{pid}/smaps")).unwrap_or_default();
-        content
-            .lines()
-            .filter_map(|l| l.strip_prefix("VmSwap:"))
-            .filter_map(|v| v.split_whitespace().next()?.parse::<u64>().ok())
-            .sum::<u64>()
-            * 1024
-    }
-
     fn swap_on(&self, device: &Path) -> Result<()> {
         let path = std::ffi::CString::new(device.to_string_lossy().as_bytes())
             .map_err(|e| color_eyre::eyre::eyre!("invalid path: {e}"))?;

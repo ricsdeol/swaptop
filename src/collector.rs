@@ -30,7 +30,7 @@ impl Collector {
                 .iter()
                 .map(|p| {
                     let pid = p.pid;
-                    tokio::spawn(async move { (pid, read_smaps_swap(pid)) })
+                    tokio::task::spawn_blocking(move || (pid, read_smaps_swap(pid)))
                 })
                 .collect();
 
