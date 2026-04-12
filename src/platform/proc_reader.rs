@@ -5,24 +5,20 @@ use crate::platform::ProcessRow;
 
 /// Fields extracted from `/proc/{pid}/status`.
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)]
 struct StatusInfo {
     name: String,
-    uid:  u32,
-    rss:  u64,
-    vms:  u64,
+    uid: u32,
+    rss: u64,
     swap: u64,
 }
 
-#[allow(dead_code)]
 pub struct ProcReader {
-    prev_ticks:  HashMap<u32, u64>,
-    prev_time:   Instant,
-    uid_cache:   HashMap<u32, String>,
+    prev_ticks: HashMap<u32, u64>,
+    prev_time: Instant,
+    uid_cache: HashMap<u32, String>,
     clock_ticks: f64,
 }
 
-#[allow(dead_code)]
 impl ProcReader {
     pub fn new() -> Self {
         let clock_ticks = nix::unistd::sysconf(nix::unistd::SysconfVar::CLK_TCK)
@@ -30,9 +26,9 @@ impl ProcReader {
             .flatten()
             .unwrap_or(100) as f64;
         Self {
-            prev_ticks:  HashMap::new(),
-            prev_time:   Instant::now(),
-            uid_cache:   HashMap::new(),
+            prev_ticks: HashMap::new(),
+            prev_time: Instant::now(),
+            uid_cache: HashMap::new(),
             clock_ticks,
         }
     }
@@ -99,7 +95,6 @@ impl ProcReader {
                 name: info.name,
                 user,
                 rss: info.rss,
-                vms: info.vms,
                 swap: info.swap,
                 cpu_pct,
             });
@@ -131,17 +126,14 @@ impl Default for ProcReader {
     }
 }
 
-#[allow(dead_code)]
 fn is_kernel_thread(name: &str) -> bool {
     name.starts_with('[') && name.ends_with(']')
 }
 
-#[allow(dead_code)]
 fn parse_status(content: &str) -> Option<StatusInfo> {
     let mut name: Option<String> = None;
     let mut uid: Option<u32> = None;
     let mut rss: u64 = 0;
-    let mut vms: u64 = 0;
     let mut swap: u64 = 0;
 
     for line in content.lines() {
@@ -151,8 +143,6 @@ fn parse_status(content: &str) -> Option<StatusInfo> {
             uid = v.split_whitespace().next()?.parse().ok();
         } else if let Some(v) = line.strip_prefix("VmRSS:") {
             rss = parse_kb_value(v);
-        } else if let Some(v) = line.strip_prefix("VmSize:") {
-            vms = parse_kb_value(v);
         } else if let Some(v) = line.strip_prefix("VmSwap:") {
             swap = parse_kb_value(v);
         }
@@ -162,12 +152,10 @@ fn parse_status(content: &str) -> Option<StatusInfo> {
         name: name?,
         uid: uid?,
         rss,
-        vms,
         swap,
     })
 }
 
-#[allow(dead_code)]
 fn parse_kb_value(s: &str) -> u64 {
     s.split_whitespace()
         .next()
@@ -176,7 +164,6 @@ fn parse_kb_value(s: &str) -> u64 {
         * 1024
 }
 
-#[allow(dead_code)]
 fn parse_stat_cpu_ticks(content: &str) -> Option<u64> {
     let after_comm = content.rfind(')')? + 1;
     let fields: Vec<&str> = content[after_comm..].split_whitespace().collect();
@@ -211,7 +198,6 @@ Threads:\t4
         assert_eq!(info.name, "firefox");
         assert_eq!(info.uid, 1000);
         assert_eq!(info.rss, 524288 * 1024);
-        assert_eq!(info.vms, 2097152 * 1024);
         assert_eq!(info.swap, 131072 * 1024);
     }
 
@@ -240,7 +226,6 @@ Threads:\t1
         assert_eq!(info.name, "[kworker/0:0]");
         assert_eq!(info.uid, 0);
         assert_eq!(info.rss, 0);
-        assert_eq!(info.vms, 0);
         assert_eq!(info.swap, 0);
     }
 
@@ -301,5 +286,45 @@ VmSwap:\t       0 kB
         assert!(!is_kernel_thread("kswapd0"));
         assert!(!is_kernel_thread("[incomplete"));
         assert!(!is_kernel_thread("trailing]"));
+    }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn parse_status_extracts_name_and_uid(
+                name in "[a-zA-Z_][a-zA-Z0-9_]{0,15}",
+                uid in 0_u32..65534u32,
+            ) {
+                let content = format!(
+                    "Name:\t{name}\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\nVmRSS:\t 0 kB\nVmSize:\t 0 kB\nVmSwap:\t 0 kB\n"
+                );
+                let info = parse_status(&content);
+                prop_assert!(info.is_some(), "parse_status returned None for valid input");
+                let info = info.unwrap();
+                prop_assert_eq!(&info.name, &name);
+                prop_assert_eq!(info.uid, uid);
+            }
+
+            #[test]
+            fn parse_status_never_panics(content in ".*") {
+                let _ = parse_status(&content);
+            }
+
+            #[test]
+            fn parse_stat_sums_utime_and_stime(
+                utime in 0_u64..1_000_000u64,
+                stime in 0_u64..1_000_000u64,
+            ) {
+                let content = format!(
+                    "1234 (test) S 1000 1234 1234 0 -1 4194304 \
+                     1000 0 100 0 {utime} {stime} 0 0 20 0 4 0 1000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+                );
+                let result = parse_stat_cpu_ticks(&content);
+                prop_assert_eq!(result, Some(utime + stime));
+            }
+        }
     }
 }

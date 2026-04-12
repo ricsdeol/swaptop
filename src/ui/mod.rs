@@ -23,10 +23,10 @@ pub fn render(f: &mut Frame, state: &AppState) {
     render_tabbar(f, layout[0], state);
 
     match state.active_tab {
-        Tab::Overview  => overview::render(f, layout[1], state),
+        Tab::Overview => overview::render(f, layout[1], state),
         Tab::Processes => processes::render(f, layout[1], state),
-        Tab::Devices   => devices::render(f, layout[1], state),
-        _              => render_coming_soon(f, layout[1]),
+        Tab::Devices => devices::render(f, layout[1], state),
+        _ => render_coming_soon(f, layout[1]),
     }
 
     statusbar::render(f, layout[2], state);
@@ -47,27 +47,47 @@ fn build_layout(area: Rect) -> Rc<[Rect]> {
 fn render_tabbar(f: &mut Frame, area: Rect, state: &AppState) {
     let titles = vec![
         Line::from(vec![
-            Span::styled("1", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "1",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(":Overview", Style::default().fg(Color::White)),
         ]),
         Line::from(vec![
-            Span::styled("2", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "2",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(":Processes", Style::default().fg(Color::White)),
         ]),
         Line::from(vec![
-            Span::styled("3", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "3",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(":Devices", Style::default().fg(Color::White)),
         ]),
         Line::from(vec![
-            Span::styled("4", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "4",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(":Create Swap", Style::default().fg(Color::White)),
         ]),
     ];
 
     let selected = match state.active_tab {
-        Tab::Overview   => 0,
-        Tab::Processes  => 1,
-        Tab::Devices    => 2,
+        Tab::Overview => 0,
+        Tab::Processes => 1,
+        Tab::Devices => 2,
         Tab::CreateSwap => 3,
     };
 
@@ -76,7 +96,9 @@ fn render_tabbar(f: &mut Frame, area: Rect, state: &AppState) {
             Block::default()
                 .title(Span::styled(
                     " swaptop ",
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 ))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Cyan)),
@@ -96,17 +118,24 @@ fn render_tabbar(f: &mut Frame, area: Rect, state: &AppState) {
 fn render_coming_soon(f: &mut Frame, area: Rect) {
     let p = Paragraph::new(Line::from(vec![
         Span::raw("  "),
-        Span::styled("Coming in a future phase…", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "Coming in a future phase…",
+            Style::default().fg(Color::DarkGray),
+        ),
     ]))
-    .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
     f.render_widget(p, area);
 }
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
-    use ratatui::layout::{Constraint, Direction, Layout, Rect};
     use crate::ui::design::{INNER_GAP, OUTER_GAP};
+    use ratatui::layout::{Constraint, Direction, Layout, Rect};
+    use std::rc::Rc;
 
     fn build_layout(area: Rect) -> Rc<[Rect]> {
         super::build_layout(area)
@@ -116,7 +145,7 @@ mod tests {
     fn tabbar_starts_at_top_and_has_correct_height() {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_layout(area);
-        assert_eq!(layout[0].y,      0);
+        assert_eq!(layout[0].y, 0);
         assert_eq!(layout[0].height, 3);
     }
 
@@ -131,7 +160,7 @@ mod tests {
     fn statusbar_is_last_row() {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_layout(area);
-        assert_eq!(layout[2].y,      area.height - 1);
+        assert_eq!(layout[2].y, area.height - 1);
         assert_eq!(layout[2].height, 1);
     }
 
@@ -140,7 +169,7 @@ mod tests {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_layout(area);
         for rect in layout.iter() {
-            assert_eq!(rect.x,     0);
+            assert_eq!(rect.x, 0);
             assert_eq!(rect.width, 120);
         }
     }

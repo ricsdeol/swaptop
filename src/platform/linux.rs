@@ -7,7 +7,7 @@ use super::proc_reader::ProcReader;
 use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind};
 
 pub struct LinuxBackend {
-    sys:         System,
+    sys: System,
     proc_reader: ProcReader,
 }
 
@@ -15,14 +15,20 @@ impl LinuxBackend {
     pub fn new() -> Self {
         let mut sys = System::new_all();
         sys.refresh_all();
-        Self { sys, proc_reader: ProcReader::new() }
+        Self {
+            sys,
+            proc_reader: ProcReader::new(),
+        }
     }
 }
 
 impl SwapBackend for LinuxBackend {
     fn system_ram(&mut self) -> Result<SwapInfo> {
         self.sys.refresh_memory();
-        Ok(SwapInfo::new(self.sys.total_memory(), self.sys.used_memory()))
+        Ok(SwapInfo::new(
+            self.sys.total_memory(),
+            self.sys.used_memory(),
+        ))
     }
 
     fn system_swap(&mut self) -> Result<SwapInfo> {
@@ -71,18 +77,16 @@ impl SwapBackend for LinuxBackend {
 
     fn swap_reset(&self, device: &Path) -> Result<()> {
         self.swap_off(device)?;
+        // NOTE: This runs inside spawn_blocking, so std::thread::sleep is
+        // appropriate here. The SwapBackend trait is synchronous by design.
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.swap_on(device)
     }
 
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            can_swap_on:     true,
-            can_swap_off:    true,
+            can_swap_on: true,
             has_per_process: true,
-            has_device_list: true,
-            can_create_swap: true,
-            requires_root:   true,
         }
     }
 }
@@ -94,7 +98,11 @@ impl SwapBackend for LinuxBackend {
 /// Exposed as `pub(crate)` so it can be unit-tested without touching the
 /// filesystem or requiring a real `LinuxBackend`.
 pub(crate) fn parse_proc_swaps(content: &str) -> Vec<SwapDevice> {
-    content.lines().skip(1).filter_map(parse_swap_line).collect()
+    content
+        .lines()
+        .skip(1)
+        .filter_map(parse_swap_line)
+        .collect()
 }
 
 fn parse_swap_line(line: &str) -> Option<SwapDevice> {
@@ -102,7 +110,7 @@ fn parse_swap_line(line: &str) -> Option<SwapDevice> {
     let raw_path = parts.next()?;
     let type_str = parts.next()?;
     let total_kb = parts.next()?.parse::<u64>().ok()?;
-    let used_kb  = parts.next()?.parse::<u64>().ok()?;
+    let used_kb = parts.next()?.parse::<u64>().ok()?;
     let priority = parts.next()?.parse::<i16>().ok()?;
 
     let path = PathBuf::from(raw_path);
@@ -111,14 +119,14 @@ fn parse_swap_line(line: &str) -> Option<SwapDevice> {
     } else {
         match type_str {
             "partition" => SwapKind::Partition,
-            _           => SwapKind::File,
+            _ => SwapKind::File,
         }
     };
 
     Some(SwapDevice {
         path,
         total: total_kb * 1024,
-        used:  used_kb  * 1024,
+        used: used_kb * 1024,
         priority,
         kind,
         active: true,
@@ -131,8 +139,7 @@ fn parse_swap_line(line: &str) -> Option<SwapDevice> {
 mod tests {
     use super::*;
 
-    const HEADER: &str =
-        "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
+    const HEADER: &str = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
 
     #[test]
     fn parse_returns_empty_for_header_only() {
@@ -159,7 +166,7 @@ mod tests {
         let content = format!("{HEADER}/swapfile\t\tfile\t2097152\t512000\t0\n");
         let devices = parse_proc_swaps(&content);
         assert_eq!(devices[0].total, 2_097_152 * 1024);
-        assert_eq!(devices[0].used,  512_000   * 1024);
+        assert_eq!(devices[0].used, 512_000 * 1024);
     }
 
     #[test]
@@ -195,4 +202,43 @@ mod tests {
         assert_eq!(devices.len(), 3);
     }
 
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn valid_line_always_produces_device(
+                total_kb in 1_u64..10_000_000u64,
+                used_kb in 0_u64..10_000_000u64,
+                prio in -100_i16..100i16,
+            ) {
+                let used_kb = used_kb.min(total_kb);
+                let line = format!("/dev/sda2\t\tpartition\t{total_kb}\t{used_kb}\t{prio}\n");
+                let content = format!("{HEADER}{line}");
+                let devices = parse_proc_swaps(&content);
+                prop_assert_eq!(devices.len(), 1);
+            }
+
+            #[test]
+            fn malformed_lines_never_panic(line in ".*") {
+                let content = format!("{HEADER}{line}\n");
+                let _ = parse_proc_swaps(&content);
+            }
+
+            #[test]
+            fn parsed_bytes_are_kb_times_1024(
+                total_kb in 1_u64..10_000_000u64,
+                used_kb in 0_u64..10_000_000u64,
+            ) {
+                let used_kb = used_kb.min(total_kb);
+                let line = format!("/dev/sda2\t\tpartition\t{total_kb}\t{used_kb}\t-1\n");
+                let content = format!("{HEADER}{line}");
+                let devices = parse_proc_swaps(&content);
+                prop_assert_eq!(devices.len(), 1);
+                prop_assert_eq!(devices[0].total, total_kb * 1024);
+                prop_assert_eq!(devices[0].used,  used_kb  * 1024);
+            }
+        }
+    }
 }

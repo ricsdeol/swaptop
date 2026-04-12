@@ -2,9 +2,9 @@
 pub mod bsd;
 pub mod factory;
 pub mod linux;
-pub mod proc_reader;
 #[cfg(target_os = "macos")]
 pub mod macos;
+pub mod proc_reader;
 pub mod types;
 #[cfg(target_os = "windows")]
 pub mod windows;
@@ -14,7 +14,6 @@ pub use types::*;
 use color_eyre::Result;
 use std::path::Path;
 
-#[allow(dead_code)]
 pub trait SwapBackend: Send + Sync {
     fn system_swap(&mut self) -> Result<SwapInfo>;
     fn system_ram(&mut self) -> Result<SwapInfo>;

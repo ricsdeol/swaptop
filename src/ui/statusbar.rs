@@ -28,10 +28,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
                         .bg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(
-                    format!(" {desc}  "),
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(format!(" {desc}  "), Style::default().fg(Color::DarkGray)),
             ]
         })
         .collect();

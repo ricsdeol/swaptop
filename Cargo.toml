@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 ratatui     = "0.30.0"
 crossterm   = { version = "0.29.0", features = ["event-stream"] }
-tokio       = { version = "1.51.1", features = ["full"] }
+tokio       = { version = "1.51.1", features = ["macros", "rt-multi-thread", "time", "sync", "signal"] }
 tokio-util  = "0.7.18"
 futures     = "0.3.32"
 sysinfo     = "0.38.4"
@@ -14,3 +14,6 @@ nix         = { version = "0.31.2", features = ["process", "signal", "mount", "u
 color-eyre  = "0.6.5"
 human_bytes = "0.4.3"
 glob        = "0.3.3"
+
+[dev-dependencies]
+proptest = "1"
