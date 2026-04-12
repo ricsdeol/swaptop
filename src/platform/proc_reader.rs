@@ -1,16 +1,141 @@
+use std::collections::HashMap;
+use std::time::Instant;
+
+use crate::platform::ProcessRow;
+
 /// Fields extracted from `/proc/{pid}/status`.
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 struct StatusInfo {
     name: String,
     uid:  u32,
-    rss:  u64,  // bytes
-    vms:  u64,  // bytes
-    swap: u64,  // bytes
+    rss:  u64,
+    vms:  u64,
+    swap: u64,
 }
 
-/// Parse `/proc/{pid}/status` content into a `StatusInfo`.
-/// Returns `None` if required fields are missing.
+#[allow(dead_code)]
+pub struct ProcReader {
+    prev_ticks:  HashMap<u32, u64>,
+    prev_time:   Instant,
+    uid_cache:   HashMap<u32, String>,
+    clock_ticks: f64,
+}
+
+#[allow(dead_code)]
+impl ProcReader {
+    pub fn new() -> Self {
+        let clock_ticks = nix::unistd::sysconf(nix::unistd::SysconfVar::CLK_TCK)
+            .ok()
+            .flatten()
+            .unwrap_or(100) as f64;
+        Self {
+            prev_ticks:  HashMap::new(),
+            prev_time:   Instant::now(),
+            uid_cache:   HashMap::new(),
+            clock_ticks,
+        }
+    }
+
+    pub fn collect(&mut self) -> Vec<ProcessRow> {
+        let now = Instant::now();
+        let delta_secs = now.duration_since(self.prev_time).as_secs_f64();
+
+        let mut rows = Vec::new();
+        let mut new_ticks: HashMap<u32, u64> = HashMap::new();
+
+        let entries = match std::fs::read_dir("/proc") {
+            Ok(e) => e,
+            Err(_) => return rows,
+        };
+
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let name_str = file_name.to_string_lossy();
+            let pid: u32 = match name_str.parse() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+
+            let status_path = format!("/proc/{pid}/status");
+            let status_content = match std::fs::read_to_string(&status_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let info = match parse_status(&status_content) {
+                Some(i) => i,
+                None => continue,
+            };
+
+            if is_kernel_thread(&info.name) {
+                continue;
+            }
+
+            let stat_path = format!("/proc/{pid}/stat");
+            let stat_content = match std::fs::read_to_string(&stat_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let ticks = parse_stat_cpu_ticks(&stat_content).unwrap_or(0);
+            new_ticks.insert(pid, ticks);
+
+            let cpu_pct = if delta_secs > 0.0 {
+                if let Some(&prev) = self.prev_ticks.get(&pid) {
+                    let delta_ticks = ticks.saturating_sub(prev) as f64;
+                    (delta_ticks / self.clock_ticks / delta_secs * 100.0) as f32
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            };
+
+            let user = self.resolve_user(info.uid);
+
+            rows.push(ProcessRow {
+                pid,
+                name: info.name,
+                user,
+                rss: info.rss,
+                vms: info.vms,
+                swap: info.swap,
+                cpu_pct,
+            });
+        }
+
+        self.prev_ticks = new_ticks;
+        self.prev_time = now;
+
+        rows
+    }
+
+    fn resolve_user(&mut self, uid: u32) -> String {
+        if let Some(name) = self.uid_cache.get(&uid) {
+            return name.clone();
+        }
+        let name = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid))
+            .ok()
+            .flatten()
+            .map(|u| u.name)
+            .unwrap_or_default();
+        self.uid_cache.insert(uid, name.clone());
+        name
+    }
+}
+
+impl Default for ProcReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[allow(dead_code)]
+fn is_kernel_thread(name: &str) -> bool {
+    name.starts_with('[') && name.ends_with(']')
+}
+
 #[allow(dead_code)]
 fn parse_status(content: &str) -> Option<StatusInfo> {
     let mut name: Option<String> = None;
@@ -42,7 +167,6 @@ fn parse_status(content: &str) -> Option<StatusInfo> {
     })
 }
 
-/// Parse a value like `"  524288 kB"` into bytes.
 #[allow(dead_code)]
 fn parse_kb_value(s: &str) -> u64 {
     s.split_whitespace()
@@ -52,15 +176,10 @@ fn parse_kb_value(s: &str) -> u64 {
         * 1024
 }
 
-/// Parse `/proc/{pid}/stat` and return `utime + stime` (total CPU ticks).
-/// Returns `None` if the format is unexpected.
 #[allow(dead_code)]
 fn parse_stat_cpu_ticks(content: &str) -> Option<u64> {
-    // Find the last ')' to skip the comm field (which can contain spaces and parens).
     let after_comm = content.rfind(')')? + 1;
     let fields: Vec<&str> = content[after_comm..].split_whitespace().collect();
-    // After ')': state(0) ppid(1) pgrp(2) session(3) tty_nr(4) tpgid(5) flags(6)
-    //            minflt(7) cminflt(8) majflt(9) cmajflt(10) utime(11) stime(12)
     let utime: u64 = fields.get(11)?.parse().ok()?;
     let stime: u64 = fields.get(12)?.parse().ok()?;
     Some(utime + stime)
@@ -69,6 +188,8 @@ fn parse_stat_cpu_ticks(content: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── parse_status tests ────────────────────────────────────────────────────
 
     #[test]
     fn parse_status_extracts_all_fields() {
@@ -136,10 +257,10 @@ VmSwap:\t       0 kB
         assert_eq!(info.swap, 0);
     }
 
+    // ── parse_stat_cpu_ticks tests ────────────────────────────────────────────
+
     #[test]
     fn parse_stat_extracts_utime_plus_stime() {
-        // Fields: pid (comm) state ppid pgrp session tty_nr tpgid flags
-        //         minflt cminflt majflt cmajflt utime stime ...
         let content = "1234 (firefox) S 1000 1234 1234 0 -1 4194304 \
                        1000 0 100 0 54321 12345 0 0 20 0 4 0 1000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0";
         let ticks = parse_stat_cpu_ticks(content).unwrap();
