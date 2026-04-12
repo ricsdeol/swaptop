@@ -3,7 +3,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Span,
+    text::{Line, Span},
     widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
 };
 
@@ -31,8 +31,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     };
 
     render_table(f, render_area, state);
-    // layout[2] is the footer — will be used in Task 2
-    let _ = layout[2];
+    render_footer(f, layout[2], state);
 }
 
 fn build_layout(area: Rect, filter_mode: bool) -> std::rc::Rc<[Rect]> {
@@ -58,6 +57,37 @@ fn render_filter_bar(f: &mut Frame, area: Rect, state: &AppState) {
         )
         .style(Style::default().fg(Color::White));
     f.render_widget(p, area);
+}
+
+fn render_footer(f: &mut Frame, area: Rect, state: &AppState) {
+    let hint_line = if state.filter_mode {
+        Line::from(vec![
+            key_span("Enter/Esc"), desc_span(" exit filter  "),
+            key_span("Backspace"), desc_span(" delete char"),
+        ])
+    } else {
+        Line::from(vec![
+            key_span("j/k"), desc_span(" navigate  "),
+            key_span("s"),   desc_span(" sort  "),
+            key_span("/"),   desc_span(" filter"),
+        ])
+    };
+
+    f.render_widget(Paragraph::new(hint_line), area);
+}
+
+fn key_span(key: &str) -> Span<'_> {
+    Span::styled(
+        format!(" {key} "),
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+fn desc_span(desc: &str) -> Span<'_> {
+    Span::styled(desc, Style::default().fg(Color::DarkGray))
 }
 
 fn render_platform_banner(f: &mut Frame, area: Rect) {
