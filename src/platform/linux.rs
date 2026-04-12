@@ -87,11 +87,6 @@ impl SwapBackend for LinuxBackend {
     }
 }
 
-#[allow(dead_code)]
-pub(crate) fn is_kernel_thread(name: &str) -> bool {
-    name.starts_with('[') && name.ends_with(']')
-}
-
 // ── Parsing ───────────────────────────────────────────────────────────────────
 
 /// Parse the contents of `/proc/swaps` into a list of `SwapDevice`s.
@@ -200,18 +195,4 @@ mod tests {
         assert_eq!(devices.len(), 3);
     }
 
-    #[test]
-    fn kernel_thread_filter_matches_bracketed_names() {
-        assert!(is_kernel_thread("[kworker/0:0]"));
-        assert!(is_kernel_thread("[migration/0]"));
-        assert!(is_kernel_thread("[kswapd0]"));
-    }
-
-    #[test]
-    fn kernel_thread_filter_rejects_regular_processes() {
-        assert!(!is_kernel_thread("firefox"));
-        assert!(!is_kernel_thread("kswapd0"));
-        assert!(!is_kernel_thread("[incomplete"));
-        assert!(!is_kernel_thread("trailing]"));
-    }
 }
