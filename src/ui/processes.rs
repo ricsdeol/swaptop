@@ -12,12 +12,13 @@ use crate::app::AppState;
 use crate::platform::ProcessRow;
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
-    let (table_area, filter_area) = build_layout(area, state.filter_mode);
+    let layout = build_layout(area, state.filter_mode);
 
-    if let Some(fa) = filter_area {
-        render_filter_bar(f, fa, state);
+    if state.filter_mode {
+        render_filter_bar(f, layout[0], state);
     }
 
+    let table_area = layout[1];
     let render_area = if !state.capabilities.has_per_process {
         let parts = Layout::default()
             .direction(Direction::Vertical)
@@ -30,18 +31,20 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     };
 
     render_table(f, render_area, state);
+    // layout[2] is the footer — will be used in Task 2
+    let _ = layout[2];
 }
 
-pub(crate) fn build_layout(area: Rect, filter_mode: bool) -> (Rect, Option<Rect>) {
-    if filter_mode {
-        let parts = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(0)])
-            .split(area);
-        (parts[1], Some(parts[0]))
-    } else {
-        (area, None)
-    }
+fn build_layout(area: Rect, filter_mode: bool) -> std::rc::Rc<[Rect]> {
+    let filter_height = if filter_mode { 3 } else { 0 };
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(filter_height), // [0] filter bar
+            Constraint::Min(0),                // [1] table
+            Constraint::Length(1),             // [2] footer / hint bar
+        ])
+        .split(area)
 }
 
 fn render_filter_bar(f: &mut Frame, area: Rect, state: &AppState) {
@@ -140,7 +143,8 @@ fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
         );
 
     let mut table_state = TableState::default();
-    table_state.select(Some(state.selected_row));
+    let clamped = state.selected_row.min(visible.len() - 1);
+    table_state.select(Some(clamped));
     f.render_stateful_widget(table, area, &mut table_state);
 }
 
@@ -159,29 +163,32 @@ mod tests {
     use ratatui::layout::Rect;
 
     #[test]
-    fn without_filter_mode_returns_full_area_and_no_filter_rect() {
+    fn without_filter_mode_footer_is_1_line_and_filter_slot_is_zero() {
         let area = Rect::new(0, 0, 120, 40);
-        let (table_area, filter_area) = build_layout(area, false);
-        assert_eq!(table_area, area);
-        assert!(filter_area.is_none());
+        let layout = build_layout(area, false);
+        assert_eq!(layout[0].height, 0);  // filter bar hidden
+        assert_eq!(layout[1].height, 39); // table fills rest
+        assert_eq!(layout[2].height, 1);  // footer
+        assert_eq!(layout[2].y, 39);
     }
 
     #[test]
-    fn with_filter_mode_splits_top_3_rows_for_filter_bar() {
+    fn with_filter_mode_filter_is_3_table_shrinks_footer_is_1() {
         let area = Rect::new(0, 0, 120, 40);
-        let (table_area, filter_area) = build_layout(area, true);
-        let filter = filter_area.unwrap();
-        assert_eq!(filter.y,          0);
-        assert_eq!(filter.height,     3);
-        assert_eq!(table_area.y,      3);
-        assert_eq!(table_area.height, 37);
+        let layout = build_layout(area, true);
+        assert_eq!(layout[0].height, 3);  // filter bar
+        assert_eq!(layout[0].y,      0);
+        assert_eq!(layout[1].height, 36); // table
+        assert_eq!(layout[2].height, 1);  // footer
+        assert_eq!(layout[2].y,      39);
     }
 
     #[test]
-    fn filter_and_table_rects_span_full_width() {
+    fn all_slots_span_full_width() {
         let area = Rect::new(0, 0, 120, 40);
-        let (table_area, filter_area) = build_layout(area, true);
-        assert_eq!(table_area.width,          120);
-        assert_eq!(filter_area.unwrap().width, 120);
+        let layout = build_layout(area, true);
+        for rect in layout.iter() {
+            assert_eq!(rect.width, 120);
+        }
     }
 }
