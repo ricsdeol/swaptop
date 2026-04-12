@@ -6,10 +6,53 @@
 
 ---
 
+<<<<<<< HEAD
 
 ## 1. Test Coverage & Tooling
 
 ### 1a. Coverage tooling
+=======
+## 1. Architecture Refactoring
+
+### 1a. Extract `src/input.rs` from `main.rs`
+
+Move the following from `main.rs` into a new `src/input.rs` module:
+
+- `resolve_key_with_context()` (lines 164–229)
+- `handle_devices_key()` (lines 231–282)
+- `next_sort_column()` (lines 284–292)
+- Existing tests for `next_sort_column` (lines 294–311)
+
+After extraction, `main.rs` retains only:
+- `main()` setup (backend, state, collector, terminal, shutdown)
+- `run()` event loop (`tokio::select!`)
+- Device op spawning logic (lines 128–144)
+
+**Result:** `main.rs` drops from ~310 to ~160 lines. Input handling becomes independently testable.
+
+### 1b. Remove `_filter_active` redundant parameter
+
+In `resolve_key_with_context`, the 8th parameter `_filter_active` duplicates the 5th parameter `filter_mode` — both are read from `s.filter_mode` (lines 109 and 111 of current main.rs). Remove the parameter, the tuple field that produces it, and the `#[allow(clippy::too_many_arguments)]` suppression (function drops to 7 params).
+
+### 1c. Tighten visibility
+
+| Target | Current | Change |
+|--------|---------|--------|
+| `#[allow(dead_code)]` on `SwapBackend` trait | module-level | Remove — trait is used via dyn dispatch |
+| `#[allow(dead_code)]` on `ProcReader` struct | struct-level | Remove — struct is used by `LinuxBackend` |
+| `#[allow(dead_code)]` on `StatusInfo` | struct-level | Remove — used by `parse_status` |
+| `#[allow(dead_code)]` on `parse_status`, `is_kernel_thread`, `parse_kb_value`, `parse_stat_cpu_ticks` | function-level | Remove — all called from `ProcReader::collect()` |
+| `#[allow(dead_code)]` on `DeviceOp::kind` | field-level | Keep — genuinely stored for future use |
+| `#![allow(dead_code)]` in `types.rs` | file-level | Remove — all types are used |
+
+If removing an `#[allow(dead_code)]` causes a clippy warning, that means the code *is* dead and should be deleted rather than re-suppressed.
+
+---
+
+## 2. Test Coverage & Tooling
+
+### 2a. Coverage tooling
+>>>>>>> cc2b552 (docs: add quality improvement design spec)
 
 - Add `cargo-llvm-cov` installation step to CI
 - Add `cargo llvm-cov --fail-under-lines 70` to CI pipeline
@@ -26,7 +69,11 @@ CI workflow additions in `.github/workflows/ci.yml`:
   run: cargo llvm-cov --fail-under-lines 70
 ```
 
+<<<<<<< HEAD
 ### 1b. MockBackend for Collector tests
+=======
+### 2b. MockBackend for Collector tests
+>>>>>>> cc2b552 (docs: add quality improvement design spec)
 
 Create a `MockBackend` struct implementing `SwapBackend` inside `collector.rs` under `#[cfg(test)]`. No external crate needed — the trait has 6 required methods with simple return types.
 
@@ -36,7 +83,11 @@ Tests to write:
 - `collect_includes_processes_when_active` — `processes_active = true` yields backend's process list
 - `collect_propagates_backend_error` — backend returns `Err`, collector surfaces it
 
+<<<<<<< HEAD
 ### 1c. Input handler tests (in new `input.rs`)
+=======
+### 2c. Input handler tests (in new `input.rs`)
+>>>>>>> cc2b552 (docs: add quality improvement design spec)
 
 After extraction, add tests for:
 - `filter_mode_captures_printable_chars` — in filter mode, letter keys return `FilterChar`
@@ -46,7 +97,11 @@ After extraction, add tests for:
 - `process_tab_keys_only_fire_on_process_tab` — j/k/s/slash only active on Processes tab
 - `device_keys_require_root_check` — o/f/r without root returns `SetError`
 
+<<<<<<< HEAD
 ### 1d. Proptest for parsers
+=======
+### 2d. Proptest for parsers
+>>>>>>> cc2b552 (docs: add quality improvement design spec)
 
 Add to `Cargo.toml`:
 ```toml
@@ -61,6 +116,7 @@ Property-based tests:
 
 ---
 
+<<<<<<< HEAD
 
 ## 2. Architecture Refactoring
 
@@ -99,6 +155,8 @@ If removing an `#[allow(dead_code)]` causes a clippy warning, that means the cod
 
 ---
 
+=======
+>>>>>>> cc2b552 (docs: add quality improvement design spec)
 ## 3. Code Quality & Async Hygiene
 
 ### 3a. `std::thread::sleep` in `swap_reset`
