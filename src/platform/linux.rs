@@ -44,12 +44,40 @@ impl SwapBackend for LinuxBackend {
             * 1024
     }
 
-    fn swap_on(&self, _device: &Path) -> Result<()> {
-        color_eyre::eyre::bail!("swap_on not yet implemented (Phase 4)")
+    fn swap_on(&self, device: &Path) -> Result<()> {
+        let path = std::ffi::CString::new(device.to_string_lossy().as_bytes())
+            .map_err(|e| color_eyre::eyre::eyre!("invalid path: {e}"))?;
+        // SAFETY: path is a valid NUL-terminated C string; 0 = no special flags.
+        let ret = unsafe { nix::libc::swapon(path.as_ptr(), 0) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(color_eyre::eyre::eyre!(
+                "swapon failed: {}",
+                std::io::Error::last_os_error()
+            ))
+        }
     }
 
-    fn swap_off(&self, _device: &Path) -> Result<()> {
-        color_eyre::eyre::bail!("swap_off not yet implemented (Phase 4)")
+    fn swap_off(&self, device: &Path) -> Result<()> {
+        let path = std::ffi::CString::new(device.to_string_lossy().as_bytes())
+            .map_err(|e| color_eyre::eyre::eyre!("invalid path: {e}"))?;
+        // SAFETY: path is a valid NUL-terminated C string.
+        let ret = unsafe { nix::libc::swapoff(path.as_ptr()) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(color_eyre::eyre::eyre!(
+                "swapoff failed: {}",
+                std::io::Error::last_os_error()
+            ))
+        }
+    }
+
+    fn swap_reset(&self, device: &Path) -> Result<()> {
+        self.swap_off(device)?;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        self.swap_on(device)
     }
 
     fn capabilities(&self) -> Capabilities {

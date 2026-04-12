@@ -1,4 +1,5 @@
 mod design;
+mod devices;
 mod overview;
 mod statusbar;
 
@@ -20,7 +21,8 @@ pub fn render(f: &mut Frame, state: &AppState) {
 
     match state.active_tab {
         Tab::Overview => overview::render(f, layout[1], state),
-        _ => render_coming_soon(f, layout[1]),
+        Tab::Devices  => devices::render(f, layout[1], state),
+        _             => render_coming_soon(f, layout[1]),
     }
 
     statusbar::render(f, layout[2], state);
