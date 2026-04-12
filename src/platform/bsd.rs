@@ -31,11 +31,7 @@ impl SwapBackend for BsdBackend {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             can_swap_on:     true,
-            can_swap_off:    true,
             has_per_process: false,
-            has_device_list: true,
-            can_create_swap: false,
-            requires_root:   true,
         }
     }
 }

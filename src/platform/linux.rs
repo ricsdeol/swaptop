@@ -80,11 +80,7 @@ impl SwapBackend for LinuxBackend {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             can_swap_on:     true,
-            can_swap_off:    true,
             has_per_process: true,
-            has_device_list: true,
-            can_create_swap: true,
-            requires_root:   true,
         }
     }
 }
@@ -195,6 +191,46 @@ mod tests {
         );
         let devices = parse_proc_swaps(&content);
         assert_eq!(devices.len(), 3);
+    }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn valid_line_always_produces_device(
+                total_kb in 1_u64..10_000_000u64,
+                used_kb in 0_u64..10_000_000u64,
+                prio in -100_i16..100i16,
+            ) {
+                let used_kb = used_kb.min(total_kb);
+                let line = format!("/dev/sda2\t\tpartition\t{total_kb}\t{used_kb}\t{prio}\n");
+                let content = format!("{HEADER}{line}");
+                let devices = parse_proc_swaps(&content);
+                prop_assert_eq!(devices.len(), 1);
+            }
+
+            #[test]
+            fn malformed_lines_never_panic(line in ".*") {
+                let content = format!("{HEADER}{line}\n");
+                let _ = parse_proc_swaps(&content);
+            }
+
+            #[test]
+            fn parsed_bytes_are_kb_times_1024(
+                total_kb in 1_u64..10_000_000u64,
+                used_kb in 0_u64..10_000_000u64,
+            ) {
+                let used_kb = used_kb.min(total_kb);
+                let line = format!("/dev/sda2\t\tpartition\t{total_kb}\t{used_kb}\t-1\n");
+                let content = format!("{HEADER}{line}");
+                let devices = parse_proc_swaps(&content);
+                prop_assert_eq!(devices.len(), 1);
+                prop_assert_eq!(devices[0].total, total_kb * 1024);
+                prop_assert_eq!(devices[0].used,  used_kb  * 1024);
+            }
+        }
     }
 
 }

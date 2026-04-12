@@ -59,7 +59,7 @@ mod tests {
                 devices:   vec![],
                 processes: vec![ProcessRow {
                     pid: 1, name: "init".into(), user: "root".into(),
-                    rss: 1024, vms: 2048, swap: 512, cpu_pct: 0.5,
+                    rss: 1024, swap: 512, cpu_pct: 0.5,
                 }],
                 fail: false,
             }
@@ -96,8 +96,8 @@ mod tests {
         fn swap_off(&self, _device: &Path) -> color_eyre::Result<()> { Ok(()) }
         fn capabilities(&self) -> Capabilities {
             Capabilities {
-                can_swap_on: true, can_swap_off: true, has_per_process: true,
-                has_device_list: true, can_create_swap: true, requires_root: false,
+                can_swap_on: true,
+                has_per_process: true,
             }
         }
     }

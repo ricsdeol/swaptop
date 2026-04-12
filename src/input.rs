@@ -160,8 +160,8 @@ mod tests {
 
     fn make_caps() -> Capabilities {
         Capabilities {
-            can_swap_on: true, can_swap_off: true, has_per_process: true,
-            has_device_list: true, can_create_swap: true, requires_root: true,
+            can_swap_on: true,
+            has_per_process: true,
         }
     }
 

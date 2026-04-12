@@ -257,11 +257,7 @@ mod tests {
     fn make_caps() -> Capabilities {
         Capabilities {
             can_swap_on:     true,
-            can_swap_off:    true,
             has_per_process: true,
-            has_device_list: true,
-            can_create_swap: true,
-            requires_root:   true,
         }
     }
 
@@ -288,7 +284,7 @@ mod tests {
 
     fn make_process(pid: u32, name: &str, swap: u64) -> ProcessRow {
         ProcessRow { pid, name: name.to_string(), user: "user".to_string(),
-                     rss: 0, vms: 0, swap, cpu_pct: 0.0 }
+                     rss: 0, swap, cpu_pct: 0.0 }
     }
 
     // ── Quit ──────────────────────────────────────────────────────────────────

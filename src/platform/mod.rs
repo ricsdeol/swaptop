@@ -14,7 +14,6 @@ pub use types::*;
 use color_eyre::Result;
 use std::path::Path;
 
-#[allow(dead_code)]
 pub trait SwapBackend: Send + Sync {
     fn system_swap(&mut self) -> Result<SwapInfo>;
     fn system_ram(&mut self) -> Result<SwapInfo>;
