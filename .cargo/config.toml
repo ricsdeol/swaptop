@@ -1,0 +1,4 @@
+[alias]
+# Run coverage excluding untestable UI/TUI/event-loop code.
+# Usage: cargo coverage
+coverage = ["llvm-cov", "--ignore-filename-regex", "src/(main|tui|ui/.*)", "--fail-under-lines", "70"]
