@@ -151,4 +151,168 @@ mod tests {
     fn user_column_falls_back_to_swap() {
         assert_eq!(next_sort_column(&SortColumn::User), SortColumn::Swap);
     }
+
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::sync::{Arc, Mutex};
+    use crate::app::{AppState, Tab};
+    use crate::actions::SortColumn;
+    use crate::platform::Capabilities;
+
+    fn make_caps() -> Capabilities {
+        Capabilities {
+            can_swap_on: true, can_swap_off: true, has_per_process: true,
+            has_device_list: true, can_create_swap: true, requires_root: true,
+        }
+    }
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn ctrl(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
+    fn make_state() -> Arc<Mutex<AppState>> {
+        Arc::new(Mutex::new(AppState::new(make_caps())))
+    }
+
+    // ── Filter mode ──────────────────────────────────────────────────────
+
+    #[test]
+    fn filter_mode_captures_printable_chars() {
+        let state = make_state();
+        let action = resolve_key(
+            key(KeyCode::Char('a')), &Tab::Processes, None, 0, false, true,
+            &SortColumn::Swap, &state,
+        );
+        assert!(matches!(action, Some(Action::FilterChar('a'))));
+    }
+
+    #[test]
+    fn filter_mode_esc_exits() {
+        let state = make_state();
+        let action = resolve_key(
+            key(KeyCode::Esc), &Tab::Processes, None, 0, false, true,
+            &SortColumn::Swap, &state,
+        );
+        assert!(matches!(action, Some(Action::ExitFilterMode)));
+    }
+
+    #[test]
+    fn filter_mode_enter_exits() {
+        let state = make_state();
+        let action = resolve_key(
+            key(KeyCode::Enter), &Tab::Processes, None, 0, false, true,
+            &SortColumn::Swap, &state,
+        );
+        assert!(matches!(action, Some(Action::ExitFilterMode)));
+    }
+
+    #[test]
+    fn filter_mode_backspace_deletes() {
+        let state = make_state();
+        let action = resolve_key(
+            key(KeyCode::Backspace), &Tab::Processes, None, 0, false, true,
+            &SortColumn::Swap, &state,
+        );
+        assert!(matches!(action, Some(Action::FilterBackspace)));
+    }
+
+    // ── Global keys ──────────────────────────────────────────────────────
+
+    #[test]
+    fn global_quit_keys_work_from_any_tab() {
+        let state = make_state();
+        for tab in [Tab::Overview, Tab::Processes, Tab::Devices, Tab::CreateSwap] {
+            let q = resolve_key(
+                key(KeyCode::Char('q')), &tab, None, 0, false, false,
+                &SortColumn::Swap, &state,
+            );
+            assert!(matches!(q, Some(Action::Quit)), "q should quit from {tab:?}");
+
+            let ctrl_c = resolve_key(
+                ctrl('c'), &tab, None, 0, false, false,
+                &SortColumn::Swap, &state,
+            );
+            assert!(matches!(ctrl_c, Some(Action::Quit)), "Ctrl+C should quit from {tab:?}");
+        }
+    }
+
+    #[test]
+    fn tab_keys_cycle_correctly() {
+        let state = make_state();
+        let fwd = resolve_key(
+            key(KeyCode::Tab), &Tab::Overview, None, 0, false, false,
+            &SortColumn::Swap, &state,
+        );
+        assert!(matches!(fwd, Some(Action::NextTab)));
+
+        let back = resolve_key(
+            key(KeyCode::BackTab), &Tab::Overview, None, 0, false, false,
+            &SortColumn::Swap, &state,
+        );
+        assert!(matches!(back, Some(Action::PrevTab)));
+    }
+
+    #[test]
+    fn number_keys_select_tabs() {
+        let state = make_state();
+        for n in [1_usize, 2, 3, 4] {
+            let c = char::from_digit(n as u32, 10).unwrap();
+            let action = resolve_key(
+                key(KeyCode::Char(c)), &Tab::Overview, None, 0, false, false,
+                &SortColumn::Swap, &state,
+            );
+            assert!(matches!(action, Some(Action::SelectTab(v)) if v == n));
+        }
+    }
+
+    // ── Tab-specific keys ────────────────────────────────────────────────
+
+    #[test]
+    fn process_tab_keys_only_fire_on_process_tab() {
+        let state = make_state();
+        let on_proc = resolve_key(
+            key(KeyCode::Char('j')), &Tab::Processes, None, 0, false, false,
+            &SortColumn::Swap, &state,
+        );
+        assert!(matches!(on_proc, Some(Action::NavigateDown)));
+
+        let on_overview = resolve_key(
+            key(KeyCode::Char('j')), &Tab::Overview, None, 0, false, false,
+            &SortColumn::Swap, &state,
+        );
+        assert!(on_overview.is_none());
+    }
+
+    #[test]
+    fn slash_enters_filter_mode_on_processes() {
+        let state = make_state();
+        let action = resolve_key(
+            key(KeyCode::Char('/')), &Tab::Processes, None, 0, false, false,
+            &SortColumn::Swap, &state,
+        );
+        assert!(matches!(action, Some(Action::EnterFilterMode)));
+    }
+
+    #[test]
+    fn refresh_key_works_on_overview_tab() {
+        let state = make_state();
+        let action = resolve_key(
+            key(KeyCode::Char('r')), &Tab::Overview, None, 0, false, false,
+            &SortColumn::Swap, &state,
+        );
+        assert!(matches!(action, Some(Action::Refresh)));
+    }
+
+    #[test]
+    fn unknown_key_returns_none() {
+        let state = make_state();
+        let action = resolve_key(
+            key(KeyCode::F(5)), &Tab::Overview, None, 0, false, false,
+            &SortColumn::Swap, &state,
+        );
+        assert!(action.is_none());
+    }
 }
