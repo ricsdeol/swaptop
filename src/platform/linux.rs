@@ -7,7 +7,7 @@ use super::proc_reader::ProcReader;
 use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind};
 
 pub struct LinuxBackend {
-    sys:         System,
+    sys: System,
     proc_reader: ProcReader,
 }
 
@@ -15,14 +15,20 @@ impl LinuxBackend {
     pub fn new() -> Self {
         let mut sys = System::new_all();
         sys.refresh_all();
-        Self { sys, proc_reader: ProcReader::new() }
+        Self {
+            sys,
+            proc_reader: ProcReader::new(),
+        }
     }
 }
 
 impl SwapBackend for LinuxBackend {
     fn system_ram(&mut self) -> Result<SwapInfo> {
         self.sys.refresh_memory();
-        Ok(SwapInfo::new(self.sys.total_memory(), self.sys.used_memory()))
+        Ok(SwapInfo::new(
+            self.sys.total_memory(),
+            self.sys.used_memory(),
+        ))
     }
 
     fn system_swap(&mut self) -> Result<SwapInfo> {
@@ -79,7 +85,7 @@ impl SwapBackend for LinuxBackend {
 
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            can_swap_on:     true,
+            can_swap_on: true,
             has_per_process: true,
         }
     }
@@ -92,7 +98,11 @@ impl SwapBackend for LinuxBackend {
 /// Exposed as `pub(crate)` so it can be unit-tested without touching the
 /// filesystem or requiring a real `LinuxBackend`.
 pub(crate) fn parse_proc_swaps(content: &str) -> Vec<SwapDevice> {
-    content.lines().skip(1).filter_map(parse_swap_line).collect()
+    content
+        .lines()
+        .skip(1)
+        .filter_map(parse_swap_line)
+        .collect()
 }
 
 fn parse_swap_line(line: &str) -> Option<SwapDevice> {
@@ -100,7 +110,7 @@ fn parse_swap_line(line: &str) -> Option<SwapDevice> {
     let raw_path = parts.next()?;
     let type_str = parts.next()?;
     let total_kb = parts.next()?.parse::<u64>().ok()?;
-    let used_kb  = parts.next()?.parse::<u64>().ok()?;
+    let used_kb = parts.next()?.parse::<u64>().ok()?;
     let priority = parts.next()?.parse::<i16>().ok()?;
 
     let path = PathBuf::from(raw_path);
@@ -109,14 +119,14 @@ fn parse_swap_line(line: &str) -> Option<SwapDevice> {
     } else {
         match type_str {
             "partition" => SwapKind::Partition,
-            _           => SwapKind::File,
+            _ => SwapKind::File,
         }
     };
 
     Some(SwapDevice {
         path,
         total: total_kb * 1024,
-        used:  used_kb  * 1024,
+        used: used_kb * 1024,
         priority,
         kind,
         active: true,
@@ -129,8 +139,7 @@ fn parse_swap_line(line: &str) -> Option<SwapDevice> {
 mod tests {
     use super::*;
 
-    const HEADER: &str =
-        "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
+    const HEADER: &str = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
 
     #[test]
     fn parse_returns_empty_for_header_only() {
@@ -157,7 +166,7 @@ mod tests {
         let content = format!("{HEADER}/swapfile\t\tfile\t2097152\t512000\t0\n");
         let devices = parse_proc_swaps(&content);
         assert_eq!(devices[0].total, 2_097_152 * 1024);
-        assert_eq!(devices[0].used,  512_000   * 1024);
+        assert_eq!(devices[0].used, 512_000 * 1024);
     }
 
     #[test]
@@ -232,5 +241,4 @@ mod tests {
             }
         }
     }
-
 }

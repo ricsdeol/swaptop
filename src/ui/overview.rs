@@ -268,15 +268,15 @@ fn render_device_summary(f: &mut Frame, area: Rect, state: &AppState) {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::layout::{Constraint, Direction, Layout, Rect};
-    use crate::ui::design::{INNER_GAP, OUTER_GAP};
     use super::build_overview_layout;
+    use crate::ui::design::{INNER_GAP, OUTER_GAP};
+    use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
     #[test]
     fn gauges_start_at_top() {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_overview_layout(area);
-        assert_eq!(layout[0].y,      0);
+        assert_eq!(layout[0].y, 0);
         assert_eq!(layout[0].height, 2);
     }
 
@@ -291,7 +291,7 @@ mod tests {
     fn device_summary_occupies_last_two_rows() {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_overview_layout(area);
-        assert_eq!(layout[2].y,      area.height - 2);
+        assert_eq!(layout[2].y, area.height - 2);
         assert_eq!(layout[2].height, 2);
     }
 
@@ -300,7 +300,7 @@ mod tests {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_overview_layout(area);
         for rect in layout.iter() {
-            assert_eq!(rect.x,     0);
+            assert_eq!(rect.x, 0);
             assert_eq!(rect.width, 120);
         }
     }

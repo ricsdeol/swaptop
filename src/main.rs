@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use color_eyre::Result;
@@ -21,23 +21,26 @@ mod ui;
 use actions::{Action, DeviceOp, DeviceOpKind, OpStatus};
 use app::{AppState, Tab};
 use collector::Collector;
-use platform::linux::LinuxBackend;
 use platform::SwapBackend;
+use platform::linux::LinuxBackend;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let backend          = platform::factory::detect();
-    let caps             = backend.capabilities();
-    let state            = Arc::new(Mutex::new(AppState::new(caps)));
+    let backend = platform::factory::detect();
+    let caps = backend.capabilities();
+    let state = Arc::new(Mutex::new(AppState::new(caps)));
     let processes_active = Arc::new(AtomicBool::new(false));
-    let mut col          = Collector::new(backend, Arc::clone(&processes_active));
+    let mut col = Collector::new(backend, Arc::clone(&processes_active));
 
     // Initial collection before entering the TUI so the first frame is not blank.
     match col.collect().await {
-        Ok(snap) => state.lock().expect("state mutex poisoned").handle_action(Action::UpdateSnapshot(snap)),
-        Err(e)   => state.lock().expect("state mutex poisoned").error_msg = Some(e.to_string()),
+        Ok(snap) => state
+            .lock()
+            .expect("state mutex poisoned")
+            .handle_action(Action::UpdateSnapshot(snap)),
+        Err(e) => state.lock().expect("state mutex poisoned").error_msg = Some(e.to_string()),
     }
 
     let mut terminal = tui::init()?;
@@ -58,15 +61,15 @@ async fn main() -> Result<()> {
 }
 
 async fn run(
-    terminal:         &mut tui::Tui,
-    state:            Arc<Mutex<AppState>>,
-    col:              &mut Collector,
+    terminal: &mut tui::Tui,
+    state: Arc<Mutex<AppState>>,
+    col: &mut Collector,
     processes_active: Arc<AtomicBool>,
-    shutdown:         CancellationToken,
+    shutdown: CancellationToken,
 ) -> Result<()> {
-    let mut tick       = interval(Duration::from_secs(1));
+    let mut tick = interval(Duration::from_secs(1));
     let mut frame_tick = interval(Duration::from_millis(33));
-    let mut events     = EventStream::new();
+    let mut events = EventStream::new();
 
     // Channel for background tasks (spawn_blocking) to send actions back.
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();

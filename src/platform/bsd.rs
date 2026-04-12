@@ -30,7 +30,7 @@ impl SwapBackend for BsdBackend {
     }
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            can_swap_on:     true,
+            can_swap_on: true,
             has_per_process: false,
         }
     }

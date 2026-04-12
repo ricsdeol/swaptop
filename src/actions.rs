@@ -20,10 +20,10 @@ pub enum OpStatus {
 
 #[derive(Debug, Clone)]
 pub struct DeviceOp {
-    pub path:              PathBuf,
+    pub path: PathBuf,
     #[allow(dead_code)] // stored for completeness; UI may display this in a future pass
-    pub kind:              DeviceOpKind,
-    pub status:            OpStatus,
+    pub kind: DeviceOpKind,
+    pub status: OpStatus,
 }
 
 // ── Phase 2 types ─────────────────────────────────────────────────────────────
@@ -100,8 +100,8 @@ mod tests {
     #[test]
     fn device_op_fields_are_accessible() {
         let op = DeviceOp {
-            path:   PathBuf::from("/dev/sda2"),
-            kind:   DeviceOpKind::Off,
+            path: PathBuf::from("/dev/sda2"),
+            kind: DeviceOpKind::Off,
             status: OpStatus::Running,
         };
         assert_eq!(op.path, PathBuf::from("/dev/sda2"));

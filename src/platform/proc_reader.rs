@@ -7,15 +7,15 @@ use crate::platform::ProcessRow;
 #[derive(Debug, PartialEq)]
 struct StatusInfo {
     name: String,
-    uid:  u32,
-    rss:  u64,
+    uid: u32,
+    rss: u64,
     swap: u64,
 }
 
 pub struct ProcReader {
-    prev_ticks:  HashMap<u32, u64>,
-    prev_time:   Instant,
-    uid_cache:   HashMap<u32, String>,
+    prev_ticks: HashMap<u32, u64>,
+    prev_time: Instant,
+    uid_cache: HashMap<u32, String>,
     clock_ticks: f64,
 }
 
@@ -26,9 +26,9 @@ impl ProcReader {
             .flatten()
             .unwrap_or(100) as f64;
         Self {
-            prev_ticks:  HashMap::new(),
-            prev_time:   Instant::now(),
-            uid_cache:   HashMap::new(),
+            prev_ticks: HashMap::new(),
+            prev_time: Instant::now(),
+            uid_cache: HashMap::new(),
             clock_ticks,
         }
     }

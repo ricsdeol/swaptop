@@ -30,7 +30,7 @@ impl SwapBackend for MacosBackend {
     }
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            can_swap_on:     false,
+            can_swap_on: false,
             has_per_process: false,
         }
     }

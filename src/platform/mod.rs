@@ -2,9 +2,9 @@
 pub mod bsd;
 pub mod factory;
 pub mod linux;
-pub mod proc_reader;
 #[cfg(target_os = "macos")]
 pub mod macos;
+pub mod proc_reader;
 pub mod types;
 #[cfg(target_os = "windows")]
 pub mod windows;

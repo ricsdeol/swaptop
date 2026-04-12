@@ -6,18 +6,21 @@ use color_eyre::Result;
 use crate::platform::{MemSnapshot, SwapBackend};
 
 pub struct Collector {
-    backend:          Box<dyn SwapBackend>,
+    backend: Box<dyn SwapBackend>,
     processes_active: Arc<AtomicBool>,
 }
 
 impl Collector {
     pub fn new(backend: Box<dyn SwapBackend>, processes_active: Arc<AtomicBool>) -> Self {
-        Self { backend, processes_active }
+        Self {
+            backend,
+            processes_active,
+        }
     }
 
     pub async fn collect(&mut self) -> Result<MemSnapshot> {
-        let ram     = self.backend.system_ram()?;
-        let swap    = self.backend.system_swap()?;
+        let ram = self.backend.system_ram()?;
+        let swap = self.backend.system_swap()?;
         let devices = self.backend.swap_devices()?;
 
         let processes = if self.processes_active.load(Ordering::Relaxed) {
@@ -39,34 +42,41 @@ impl Collector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo};
     use std::path::Path;
     use std::sync::atomic::AtomicBool;
-    use crate::platform::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo};
 
     struct MockBackend {
-        ram:       SwapInfo,
-        swap:      SwapInfo,
-        devices:   Vec<SwapDevice>,
+        ram: SwapInfo,
+        swap: SwapInfo,
+        devices: Vec<SwapDevice>,
         processes: Vec<ProcessRow>,
-        fail:      bool,
+        fail: bool,
     }
 
     impl MockBackend {
         fn healthy() -> Self {
             Self {
-                ram:       SwapInfo::new(16_000_000, 8_000_000),
-                swap:      SwapInfo::new(4_000_000, 1_000_000),
-                devices:   vec![],
+                ram: SwapInfo::new(16_000_000, 8_000_000),
+                swap: SwapInfo::new(4_000_000, 1_000_000),
+                devices: vec![],
                 processes: vec![ProcessRow {
-                    pid: 1, name: "init".into(), user: "root".into(),
-                    rss: 1024, swap: 512, cpu_pct: 0.5,
+                    pid: 1,
+                    name: "init".into(),
+                    user: "root".into(),
+                    rss: 1024,
+                    swap: 512,
+                    cpu_pct: 0.5,
                 }],
                 fail: false,
             }
         }
 
         fn failing() -> Self {
-            Self { fail: true, ..Self::healthy() }
+            Self {
+                fail: true,
+                ..Self::healthy()
+            }
         }
     }
 
@@ -92,8 +102,12 @@ mod tests {
         fn process_list(&mut self) -> color_eyre::Result<Vec<ProcessRow>> {
             Ok(self.processes.clone())
         }
-        fn swap_on(&self, _device: &Path) -> color_eyre::Result<()> { Ok(()) }
-        fn swap_off(&self, _device: &Path) -> color_eyre::Result<()> { Ok(()) }
+        fn swap_on(&self, _device: &Path) -> color_eyre::Result<()> {
+            Ok(())
+        }
+        fn swap_off(&self, _device: &Path) -> color_eyre::Result<()> {
+            Ok(())
+        }
         fn capabilities(&self) -> Capabilities {
             Capabilities {
                 can_swap_on: true,

@@ -3,9 +3,9 @@ use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub struct SwapInfo {
-    pub total:   u64,  // bytes
-    pub used:    u64,  // bytes
-    pub percent: f32,  // 0.0–100.0
+    pub total: u64,   // bytes
+    pub used: u64,    // bytes
+    pub percent: f32, // 0.0–100.0
 }
 
 impl SwapInfo {
@@ -16,18 +16,22 @@ impl SwapInfo {
         } else {
             0.0
         };
-        Self { total, used, percent }
+        Self {
+            total,
+            used,
+            percent,
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct SwapDevice {
-    pub path:     PathBuf,
-    pub total:    u64,
-    pub used:     u64,
+    pub path: PathBuf,
+    pub total: u64,
+    pub used: u64,
     pub priority: i16,
-    pub kind:     SwapKind,
-    pub active:   bool,
+    pub kind: SwapKind,
+    pub active: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -41,25 +45,25 @@ impl std::fmt::Display for SwapKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SwapKind::Partition => write!(f, "Partition"),
-            SwapKind::File      => write!(f, "File"),
-            SwapKind::Zram      => write!(f, "Zram"),
+            SwapKind::File => write!(f, "File"),
+            SwapKind::Zram => write!(f, "Zram"),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ProcessRow {
-    pub pid:     u32,
-    pub name:    String,
-    pub user:    String,
-    pub rss:     u64,
-    pub swap:    u64,
+    pub pid: u32,
+    pub name: String,
+    pub user: String,
+    pub rss: u64,
+    pub swap: u64,
     pub cpu_pct: f32,
 }
 
 #[derive(Debug, Clone)]
 pub struct Capabilities {
-    pub can_swap_on:     bool,
+    pub can_swap_on: bool,
     pub has_per_process: bool,
 }
 
@@ -67,9 +71,9 @@ pub struct Capabilities {
 #[derive(Debug, Clone)]
 pub struct MemSnapshot {
     pub timestamp: Instant,
-    pub ram:       SwapInfo,
-    pub swap:      SwapInfo,
-    pub devices:   Vec<SwapDevice>,
+    pub ram: SwapInfo,
+    pub swap: SwapInfo,
+    pub devices: Vec<SwapDevice>,
     pub processes: Vec<ProcessRow>,
 }
 

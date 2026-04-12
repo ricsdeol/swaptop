@@ -62,14 +62,19 @@ fn render_filter_bar(f: &mut Frame, area: Rect, state: &AppState) {
 fn render_footer(f: &mut Frame, area: Rect, state: &AppState) {
     let hint_line = if state.filter_mode {
         Line::from(vec![
-            key_span("Enter/Esc"), desc_span(" exit filter  "),
-            key_span("Backspace"), desc_span(" delete char"),
+            key_span("Enter/Esc"),
+            desc_span(" exit filter  "),
+            key_span("Backspace"),
+            desc_span(" delete char"),
         ])
     } else {
         Line::from(vec![
-            key_span("j/k"), desc_span(" navigate  "),
-            key_span("s"),   desc_span(" sort  "),
-            key_span("/"),   desc_span(" filter"),
+            key_span("j/k"),
+            desc_span(" navigate  "),
+            key_span("s"),
+            desc_span(" sort  "),
+            key_span("/"),
+            desc_span(" filter"),
         ])
     };
 
@@ -106,28 +111,32 @@ fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
     let visible: Vec<&ProcessRow> = if lower.is_empty() {
         state.processes.iter().collect()
     } else {
-        state.processes
+        state
+            .processes
             .iter()
             .filter(|p| p.name.to_lowercase().contains(&lower))
             .collect()
     };
 
     if visible.is_empty() {
-        let p = Paragraph::new("  No processes found")
-            .style(Style::default().fg(Color::DarkGray));
+        let p = Paragraph::new("  No processes found").style(Style::default().fg(Color::DarkGray));
         f.render_widget(p, area);
         return;
     }
 
     let header = Row::new(vec![
-        header_cell("PID",  &SortColumn::Pid,  state),
+        header_cell("PID", &SortColumn::Pid, state),
         header_cell("Name", &SortColumn::Name, state),
         header_cell("User", &SortColumn::User, state),
-        header_cell("RSS",  &SortColumn::Rss,  state),
+        header_cell("RSS", &SortColumn::Rss, state),
         header_cell("Swap", &SortColumn::Swap, state),
-        header_cell("CPU%", &SortColumn::Cpu,  state),
+        header_cell("CPU%", &SortColumn::Cpu, state),
     ])
-    .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+    .style(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )
     .height(1);
 
     let rows: Vec<Row> = visible
@@ -136,8 +145,7 @@ fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
             let swap_cell = if has_per_process {
                 Cell::from(format!("{:>10}", human_bytes(p.swap as f64)))
             } else {
-                Cell::from(format!("{:>10}", "—"))
-                    .style(Style::default().fg(Color::DarkGray))
+                Cell::from(format!("{:>10}", "—")).style(Style::default().fg(Color::DarkGray))
             };
             Row::new(vec![
                 Cell::from(format!("{:>6}", p.pid)),
@@ -180,7 +188,11 @@ fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
 
 fn header_cell<'a>(label: &'a str, col: &SortColumn, state: &AppState) -> Cell<'a> {
     let indicator = if col == &state.sort_col {
-        if state.sort_dir == SortDir::Desc { " ▾" } else { " ▲" }
+        if state.sort_dir == SortDir::Desc {
+            " ▾"
+        } else {
+            " ▲"
+        }
     } else {
         ""
     };
@@ -196,9 +208,9 @@ mod tests {
     fn without_filter_mode_footer_is_1_line_and_filter_slot_is_zero() {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_layout(area, false);
-        assert_eq!(layout[0].height, 0);  // filter bar hidden
+        assert_eq!(layout[0].height, 0); // filter bar hidden
         assert_eq!(layout[1].height, 39); // table fills rest
-        assert_eq!(layout[2].height, 1);  // footer
+        assert_eq!(layout[2].height, 1); // footer
         assert_eq!(layout[2].y, 39);
     }
 
@@ -206,11 +218,11 @@ mod tests {
     fn with_filter_mode_filter_is_3_table_shrinks_footer_is_1() {
         let area = Rect::new(0, 0, 120, 40);
         let layout = build_layout(area, true);
-        assert_eq!(layout[0].height, 3);  // filter bar
-        assert_eq!(layout[0].y,      0);
+        assert_eq!(layout[0].height, 3); // filter bar
+        assert_eq!(layout[0].y, 0);
         assert_eq!(layout[1].height, 36); // table
-        assert_eq!(layout[2].height, 1);  // footer
-        assert_eq!(layout[2].y,      39);
+        assert_eq!(layout[2].height, 1); // footer
+        assert_eq!(layout[2].y, 39);
     }
 
     #[test]
