@@ -25,7 +25,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.94.1"
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
 
       - name: Cache cargo registry and build artifacts
         uses: actions/cache@v4
@@ -39,6 +39,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Check formatting
+        run: cargo fmt --check
+
       - name: Build
         run: cargo build
 
@@ -47,3 +50,8 @@ jobs:
 
       - name: Tests
         run: cargo test
+
+      - uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Coverage
+        run: cargo llvm-cov --fail-under-lines 70
