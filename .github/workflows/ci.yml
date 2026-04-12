@@ -34,8 +34,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            target/ **/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -54,4 +53,4 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Coverage
-        run: cargo llvm-cov --ignore-filename-regex 'src/(main|tui|ui/.*)' --fail-under-lines 70
+        run: cargo llvm-cov --ignore-filename-regex "src/(main|tui|ui/.*)" --fail-under-lines 70
