@@ -4,6 +4,8 @@ mod overview;
 mod processes;
 mod statusbar;
 
+use std::rc::Rc;
+
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -30,7 +32,7 @@ pub fn render(f: &mut Frame, state: &AppState) {
     statusbar::render(f, layout[2], state);
 }
 
-fn build_layout(area: Rect) -> std::rc::Rc<[Rect]> {
+fn build_layout(area: Rect) -> Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -102,10 +104,11 @@ fn render_coming_soon(f: &mut Frame, area: Rect) {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
     use ratatui::layout::{Constraint, Direction, Layout, Rect};
     use crate::ui::design::{INNER_GAP, OUTER_GAP};
 
-    fn build_layout(area: Rect) -> std::rc::Rc<[Rect]> {
+    fn build_layout(area: Rect) -> Rc<[Rect]> {
         super::build_layout(area)
     }
 
