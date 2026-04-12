@@ -287,4 +287,19 @@ VmSwap:\t       0 kB
     fn parse_stat_returns_none_for_garbage() {
         assert!(parse_stat_cpu_ticks("not a stat line").is_none());
     }
+
+    #[test]
+    fn kernel_thread_filter_matches_bracketed_names() {
+        assert!(is_kernel_thread("[kworker/0:0]"));
+        assert!(is_kernel_thread("[migration/0]"));
+        assert!(is_kernel_thread("[kswapd0]"));
+    }
+
+    #[test]
+    fn kernel_thread_filter_rejects_regular_processes() {
+        assert!(!is_kernel_thread("firefox"));
+        assert!(!is_kernel_thread("kswapd0"));
+        assert!(!is_kernel_thread("[incomplete"));
+        assert!(!is_kernel_thread("trailing]"));
+    }
 }
