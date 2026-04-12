@@ -1,7 +1,10 @@
 mod design;
 mod devices;
 mod overview;
+mod processes;
 mod statusbar;
+
+use std::rc::Rc;
 
 use ratatui::{
     Frame,
@@ -20,15 +23,16 @@ pub fn render(f: &mut Frame, state: &AppState) {
     render_tabbar(f, layout[0], state);
 
     match state.active_tab {
-        Tab::Overview => overview::render(f, layout[1], state),
-        Tab::Devices  => devices::render(f, layout[1], state),
-        _             => render_coming_soon(f, layout[1]),
+        Tab::Overview  => overview::render(f, layout[1], state),
+        Tab::Processes => processes::render(f, layout[1], state),
+        Tab::Devices   => devices::render(f, layout[1], state),
+        _              => render_coming_soon(f, layout[1]),
     }
 
     statusbar::render(f, layout[2], state);
 }
 
-fn build_layout(area: Rect) -> std::rc::Rc<[Rect]> {
+fn build_layout(area: Rect) -> Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -100,10 +104,11 @@ fn render_coming_soon(f: &mut Frame, area: Rect) {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
     use ratatui::layout::{Constraint, Direction, Layout, Rect};
     use crate::ui::design::{INNER_GAP, OUTER_GAP};
 
-    fn build_layout(area: Rect) -> std::rc::Rc<[Rect]> {
+    fn build_layout(area: Rect) -> Rc<[Rect]> {
         super::build_layout(area)
     }
 

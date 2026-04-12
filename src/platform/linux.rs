@@ -3,17 +3,19 @@ use std::path::{Path, PathBuf};
 use color_eyre::Result;
 use sysinfo::System;
 
-use super::{Capabilities, SwapBackend, SwapDevice, SwapInfo, SwapKind};
+use super::proc_reader::ProcReader;
+use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind};
 
 pub struct LinuxBackend {
-    sys: System,
+    sys:         System,
+    proc_reader: ProcReader,
 }
 
 impl LinuxBackend {
     pub fn new() -> Self {
         let mut sys = System::new_all();
         sys.refresh_all();
-        Self { sys }
+        Self { sys, proc_reader: ProcReader::new() }
     }
 }
 
@@ -33,15 +35,8 @@ impl SwapBackend for LinuxBackend {
         Ok(parse_proc_swaps(&content))
     }
 
-    fn process_swap(&self, pid: u32) -> u64 {
-        let content =
-            std::fs::read_to_string(format!("/proc/{pid}/smaps")).unwrap_or_default();
-        content
-            .lines()
-            .filter_map(|l| l.strip_prefix("VmSwap:"))
-            .filter_map(|v| v.split_whitespace().next()?.parse::<u64>().ok())
-            .sum::<u64>()
-            * 1024
+    fn process_list(&mut self) -> Result<Vec<ProcessRow>> {
+        Ok(self.proc_reader.collect())
     }
 
     fn swap_on(&self, device: &Path) -> Result<()> {
@@ -199,4 +194,5 @@ mod tests {
         let devices = parse_proc_swaps(&content);
         assert_eq!(devices.len(), 3);
     }
+
 }

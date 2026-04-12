@@ -26,6 +26,24 @@ pub struct DeviceOp {
     pub status:            OpStatus,
 }
 
+// ── Phase 2 types ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SortColumn {
+    Pid,
+    Name,
+    User,
+    Rss,
+    Swap,
+    Cpu,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SortDir {
+    Asc,
+    Desc,
+}
+
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -48,6 +66,15 @@ pub enum Action {
     CancelConfirm,
     ExecuteDeviceOp { path: PathBuf, kind: DeviceOpKind },
     DeviceOpUpdate(DeviceOp),
+
+    // Phase 2 — processes navigation
+    NavigateUp,
+    NavigateDown,
+    SortBy(SortColumn),
+    EnterFilterMode,
+    FilterChar(char),
+    FilterBackspace,
+    ExitFilterMode,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

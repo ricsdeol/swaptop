@@ -22,9 +22,6 @@ impl SwapBackend for WindowsBackend {
     fn swap_devices(&mut self) -> Result<Vec<SwapDevice>> {
         color_eyre::eyre::bail!("Windows backend not yet implemented")
     }
-    fn process_swap(&self, _pid: u32) -> u64 {
-        0
-    }
     fn swap_on(&self, _device: &Path) -> Result<()> {
         color_eyre::eyre::bail!("not supported on Windows")
     }
