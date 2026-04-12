@@ -71,6 +71,8 @@ impl SwapBackend for LinuxBackend {
 
     fn swap_reset(&self, device: &Path) -> Result<()> {
         self.swap_off(device)?;
+        // NOTE: This runs inside spawn_blocking, so std::thread::sleep is
+        // appropriate here. The SwapBackend trait is synchronous by design.
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.swap_on(device)
     }
