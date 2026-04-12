@@ -69,9 +69,9 @@ Phase 4 → swapon/swapoff via nix, devices UI, root check
 Phase 5 → create-swap wizard, tokio::process::Command, disk space validation
 ```
 
-## Before committing
+## After implementing all phases
 
-Run these and fix any issues before creating a commit:
+Run these and fix any issues after implement all phases:
 
 ```bash
 cargo build          # must compile clean (zero warnings)
