@@ -1,6 +1,7 @@
 mod design;
 mod devices;
 mod overview;
+mod processes;
 mod statusbar;
 
 use ratatui::{
@@ -20,9 +21,10 @@ pub fn render(f: &mut Frame, state: &AppState) {
     render_tabbar(f, layout[0], state);
 
     match state.active_tab {
-        Tab::Overview => overview::render(f, layout[1], state),
-        Tab::Devices  => devices::render(f, layout[1], state),
-        _             => render_coming_soon(f, layout[1]),
+        Tab::Overview  => overview::render(f, layout[1], state),
+        Tab::Processes => processes::render(f, layout[1], state),
+        Tab::Devices   => devices::render(f, layout[1], state),
+        _              => render_coming_soon(f, layout[1]),
     }
 
     statusbar::render(f, layout[2], state);

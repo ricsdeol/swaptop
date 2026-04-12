@@ -6,16 +6,30 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::app::AppState;
+use crate::app::{AppState, Tab};
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
-    let keys: &[(&str, &str)] = &[
-        ("q", "quit"),
-        ("Tab", "next tab"),
-        ("1-4", "switch tab"),
-        ("r", "refresh"),
-        ("?", "help"),
-    ];
+    let keys: &[(&str, &str)] = if state.filter_mode {
+        &[
+            ("Enter/Esc", "exit filter"),
+            ("Backspace", "delete char"),
+        ]
+    } else if state.active_tab == Tab::Processes {
+        &[
+            ("j/k", "navigate"),
+            ("s", "sort"),
+            ("/", "filter"),
+            ("Tab", "next tab"),
+            ("q", "quit"),
+        ]
+    } else {
+        &[
+            ("q", "quit"),
+            ("Tab", "next tab"),
+            ("1-4", "switch tab"),
+            ("r", "refresh"),
+        ]
+    };
 
     let mut spans: Vec<Span> = keys
         .iter()
