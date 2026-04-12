@@ -112,16 +112,15 @@ async fn run(
                         )
                     };
 
-                    let action = input::resolve_key(
-                        key,
-                        &active_tab,
-                        confirm_action.as_ref(),
+                    let action = input::resolve_key(key, &input::KeyContext {
+                        active_tab:     &active_tab,
+                        confirm_action: confirm_action.as_ref(),
                         selected_dev,
                         has_devices,
                         filter_mode,
-                        &sort_col,
-                        &state,
-                    );
+                        sort_col:       &sort_col,
+                        state:          &state,
+                    });
 
                     // Spawn background task before dispatching ExecuteDeviceOp to AppState
                     if let Some(Action::ExecuteDeviceOp { ref path, ref kind }) = action {
