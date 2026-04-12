@@ -1,21 +1,21 @@
 use std::path::{Path, PathBuf};
 
 use color_eyre::Result;
-use sysinfo::{System, Users};
+use sysinfo::System;
 
+use super::proc_reader::ProcReader;
 use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind};
 
 pub struct LinuxBackend {
-    sys:   System,
-    users: Users,
+    sys:         System,
+    proc_reader: ProcReader,
 }
 
 impl LinuxBackend {
     pub fn new() -> Self {
         let mut sys = System::new_all();
         sys.refresh_all();
-        let users = Users::new_with_refreshed_list();
-        Self { sys, users }
+        Self { sys, proc_reader: ProcReader::new() }
     }
 }
 
@@ -36,30 +36,7 @@ impl SwapBackend for LinuxBackend {
     }
 
     fn process_list(&mut self) -> Result<Vec<ProcessRow>> {
-        self.sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-        let rows = self
-            .sys
-            .processes()
-            .values()
-            .filter(|p| !is_kernel_thread(&p.name().to_string_lossy()))
-            .map(|p| {
-                let user = p
-                    .user_id()
-                    .and_then(|uid| self.users.get_user_by_id(uid))
-                    .map(|u| u.name().to_string())
-                    .unwrap_or_default();
-                ProcessRow {
-                    pid:     p.pid().as_u32(),
-                    name:    p.name().to_string_lossy().into_owned(),
-                    user,
-                    rss:     p.memory(),
-                    vms:     p.virtual_memory(),
-                    swap:    0,
-                    cpu_pct: p.cpu_usage(),
-                }
-            })
-            .collect();
-        Ok(rows)
+        Ok(self.proc_reader.collect())
     }
 
     fn swap_on(&self, device: &Path) -> Result<()> {
@@ -110,6 +87,7 @@ impl SwapBackend for LinuxBackend {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn is_kernel_thread(name: &str) -> bool {
     name.starts_with('[') && name.ends_with(']')
 }
