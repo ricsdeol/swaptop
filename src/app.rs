@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use crate::actions::{Action, DeviceOp, DeviceOpKind, OpStatus, SortColumn, SortDir};
+use crate::create_swap::{CreateSwapMode, CreateSwapModal, CreateSwapStep, StepStatus};
 use crate::platform::{Capabilities, MemSnapshot, ProcessRow, SwapDevice};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -9,7 +10,6 @@ pub enum Tab {
     Overview,
     Processes,
     Devices,
-    CreateSwap,
 }
 
 pub struct AppState {
@@ -36,6 +36,9 @@ pub struct AppState {
     pub selected_row: usize,
     pub filter_text: String,
     pub filter_mode: bool,
+
+    // Phase 5
+    pub create_swap_modal: Option<CreateSwapModal>,
 }
 
 impl AppState {
@@ -61,6 +64,7 @@ impl AppState {
             selected_row: 0,
             filter_text: String::new(),
             filter_mode: false,
+            create_swap_modal: None,
         }
     }
 
@@ -107,17 +111,15 @@ impl AppState {
                 self.active_tab = match self.active_tab {
                     Tab::Overview => Tab::Processes,
                     Tab::Processes => Tab::Devices,
-                    Tab::Devices => Tab::CreateSwap,
-                    Tab::CreateSwap => Tab::Overview,
+                    Tab::Devices => Tab::Overview,
                 };
             }
 
             Action::PrevTab => {
                 self.active_tab = match self.active_tab {
-                    Tab::Overview => Tab::CreateSwap,
+                    Tab::Overview => Tab::Devices,
                     Tab::Processes => Tab::Overview,
                     Tab::Devices => Tab::Processes,
-                    Tab::CreateSwap => Tab::Devices,
                 };
             }
 
@@ -126,7 +128,6 @@ impl AppState {
                     1 => Tab::Overview,
                     2 => Tab::Processes,
                     3 => Tab::Devices,
-                    4 => Tab::CreateSwap,
                     _ => return,
                 };
             }
@@ -247,49 +248,95 @@ impl AppState {
 
             // Phase 5 — create swap modal
             Action::OpenCreateSwap => {
-                // Modal will be opened; set to empty form state
+                self.create_swap_modal = Some(CreateSwapModal::default());
             }
 
             Action::CloseCreateSwap => {
-                // Modal will be closed
+                self.create_swap_modal = None;
             }
 
             Action::CreateSwapReturnToForm => {
-                // Return from progress/confirm screen to form
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.mode = CreateSwapMode::Form {
+                        focused_field: crate::create_swap::CreateSwapField::Submit,
+                    };
+                }
             }
 
-            Action::CreateSwapFocusField(_field) => {
-                // Focus changes handled by modal state
+            Action::CreateSwapFocusField(field) => {
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    if let CreateSwapMode::Form { focused_field } = &mut modal.mode {
+                        *focused_field = field;
+                    }
+                }
             }
 
-            Action::CreateSwapInputEvent(_event) => {
-                // Input events handled by modal state
+            Action::CreateSwapInputEvent(event) => {
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    if let CreateSwapMode::Form { focused_field } = modal.mode {
+                        use tui_input::backend::crossterm::EventHandler;
+                        let target = match focused_field {
+                            crate::create_swap::CreateSwapField::Path => {
+                                Some(&mut modal.path_input)
+                            }
+                            crate::create_swap::CreateSwapField::Size => {
+                                Some(&mut modal.size_input)
+                            }
+                            crate::create_swap::CreateSwapField::Priority => {
+                                Some(&mut modal.priority_input)
+                            }
+                            _ => None,
+                        };
+                        if let Some(input) = target {
+                            let _ = input.handle_event(&event);
+                        }
+                    }
+                }
             }
 
             Action::CreateSwapToggleUnit => {
-                // Unit toggle handled by modal state
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.size_unit = modal.size_unit.toggled();
+                }
             }
 
             Action::CreateSwapToggleActivate => {
-                // Activate toggle handled by modal state
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.activate_after = !modal.activate_after;
+                }
             }
 
             Action::CreateSwapSubmit { activate_only: _ } => {
-                // Form submission handled by modal state
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.validation_error = None;
+                    modal.mode = CreateSwapMode::Progress {
+                        steps: vec![
+                            CreateSwapStep::pending("Check disk space"),
+                            CreateSwapStep::pending("Check target file"),
+                            CreateSwapStep::pending("Detect filesystem"),
+                            CreateSwapStep::pending("Allocate file"),
+                            CreateSwapStep::pending("chmod 600"),
+                            CreateSwapStep::pending("mkswap"),
+                            CreateSwapStep::pending("swapon"),
+                        ],
+                    };
+                }
             }
 
-            Action::OpenConfirmActivateOnly {
-                path: _,
-                size_bytes: _,
-            } => {
-                // Confirm activation screen
+            Action::OpenConfirmActivateOnly { path, size_bytes } => {
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.mode = CreateSwapMode::ConfirmActivateOnly { path, size_bytes };
+                }
             }
 
-            Action::CreateSwapStepUpdate {
-                index: _,
-                status: _,
-            } => {
-                // Step progress update
+            Action::CreateSwapStepUpdate { index, status } => {
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    if let CreateSwapMode::Progress { steps } = &mut modal.mode {
+                        if let Some(step) = steps.get_mut(index) {
+                            step.status = status;
+                        }
+                    }
+                }
             }
         }
     }
@@ -362,8 +409,6 @@ mod tests {
         state.handle_action(Action::NextTab);
         assert_eq!(state.active_tab, Tab::Devices);
         state.handle_action(Action::NextTab);
-        assert_eq!(state.active_tab, Tab::CreateSwap);
-        state.handle_action(Action::NextTab);
         assert_eq!(state.active_tab, Tab::Overview);
     }
 
@@ -371,7 +416,7 @@ mod tests {
     fn prev_tab_wraps_backward_from_overview() {
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::PrevTab);
-        assert_eq!(state.active_tab, Tab::CreateSwap);
+        assert_eq!(state.active_tab, Tab::Devices);
     }
 
     #[test]
@@ -681,6 +726,133 @@ mod tests {
         state.handle_action(Action::UpdateSnapshot(snap));
         state.filter_text = "fire".to_string();
         assert_eq!(state.filtered_len(), 1);
+    }
+
+    // ── Phase 5 — create swap modal ──────────────────────────────────────────
+
+    #[test]
+    fn open_create_swap_initializes_modal() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        assert!(state.create_swap_modal.is_some());
+    }
+
+    #[test]
+    fn close_create_swap_clears_modal() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CloseCreateSwap);
+        assert!(state.create_swap_modal.is_none());
+    }
+
+    #[test]
+    fn focus_field_updates_form_focus() {
+        use crate::create_swap::{CreateSwapField, CreateSwapMode};
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapFocusField(CreateSwapField::Size));
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match modal.mode {
+            CreateSwapMode::Form { focused_field } => {
+                assert_eq!(focused_field, CreateSwapField::Size);
+            }
+            _ => panic!("expected Form mode"),
+        }
+    }
+
+    #[test]
+    fn toggle_unit_flips_mb_gb() {
+        use crate::create_swap::SizeUnit;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        let before = state.create_swap_modal.as_ref().unwrap().size_unit;
+        assert_eq!(before, SizeUnit::Gb);
+        state.handle_action(Action::CreateSwapToggleUnit);
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().size_unit,
+            SizeUnit::Mb
+        );
+    }
+
+    #[test]
+    fn toggle_activate_flips_boolean() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        assert!(state.create_swap_modal.as_ref().unwrap().activate_after);
+        state.handle_action(Action::CreateSwapToggleActivate);
+        assert!(!state.create_swap_modal.as_ref().unwrap().activate_after);
+    }
+
+    #[test]
+    fn submit_transitions_to_progress_with_seven_steps() {
+        use crate::create_swap::CreateSwapMode;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSubmit { activate_only: false });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match &modal.mode {
+            CreateSwapMode::Progress { steps } => assert_eq!(steps.len(), 7),
+            _ => panic!("expected Progress mode"),
+        }
+    }
+
+    #[test]
+    fn step_update_replaces_status_at_index() {
+        use crate::create_swap::{CreateSwapMode, StepStatus};
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSubmit { activate_only: false });
+        state.handle_action(Action::CreateSwapStepUpdate {
+            index: 0,
+            status: StepStatus::Running,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match &modal.mode {
+            CreateSwapMode::Progress { steps } => {
+                assert_eq!(steps[0].status, StepStatus::Running);
+            }
+            _ => panic!("expected Progress mode"),
+        }
+    }
+
+    #[test]
+    fn return_to_form_preserves_inputs_and_validation_error() {
+        use crate::create_swap::{CreateSwapField, CreateSwapMode};
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        {
+            let modal = state.create_swap_modal.as_mut().unwrap();
+            modal.validation_error = Some("some prior error".to_string());
+        }
+        state.handle_action(Action::CreateSwapSubmit { activate_only: false });
+        state.handle_action(Action::CreateSwapReturnToForm);
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match modal.mode {
+            CreateSwapMode::Form { focused_field } => {
+                assert_eq!(focused_field, CreateSwapField::Submit);
+            }
+            _ => panic!("expected Form mode"),
+        }
+    }
+
+    #[test]
+    fn open_confirm_activate_only_switches_mode() {
+        use crate::create_swap::CreateSwapMode;
+        use std::path::PathBuf;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::OpenConfirmActivateOnly {
+            path: PathBuf::from("/swapfile"),
+            size_bytes: 2_147_483_648,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match &modal.mode {
+            CreateSwapMode::ConfirmActivateOnly { path, size_bytes } => {
+                assert_eq!(path, &PathBuf::from("/swapfile"));
+                assert_eq!(*size_bytes, 2_147_483_648);
+            }
+            _ => panic!("expected ConfirmActivateOnly mode"),
+        }
     }
 
     // ── UpdateSnapshot sorts ──────────────────────────────────────────────────

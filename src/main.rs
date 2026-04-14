@@ -20,6 +20,7 @@ mod tui;
 mod ui;
 
 use actions::{Action, DeviceOp, DeviceOpKind, OpStatus};
+use create_swap::run_create_swap_steps;
 use app::{AppState, Tab};
 use collector::Collector;
 use platform::SwapBackend;
@@ -144,6 +145,37 @@ async fn run(
                             };
                             let _ = tx.send(Action::DeviceOpUpdate(DeviceOp { path, kind, status }));
                         });
+                    }
+
+                    // Phase 5 — spawn background create-swap task
+                    if let Some(Action::CreateSwapSubmit { activate_only }) = action {
+                        let submit = {
+                            let s = state.lock().expect("state mutex poisoned");
+                            s.create_swap_modal.as_ref().map(|m| {
+                                let size_n: u64 = m.size_input.value().trim().parse().unwrap_or(0);
+                                let size_bytes = size_n * m.size_unit.multiplier();
+                                let prio_n: i32 = m.priority_input.value().trim().parse().unwrap_or(0);
+                                (
+                                    std::path::PathBuf::from(m.path_input.value()),
+                                    size_bytes,
+                                    prio_n as i16,
+                                    m.activate_after,
+                                )
+                            })
+                        };
+                        if let Some((path, size_bytes, priority, activate_after)) = submit {
+                            let tx = action_tx.clone();
+                            tokio::task::spawn_blocking(move || {
+                                run_create_swap_steps(
+                                    path,
+                                    size_bytes,
+                                    priority,
+                                    activate_after,
+                                    activate_only,
+                                    tx,
+                                );
+                            });
+                        }
                     }
 
                     if let Some(a) = action {

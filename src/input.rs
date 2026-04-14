@@ -4,6 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::actions::{Action, DeviceOpKind, SortColumn};
 use crate::app::{AppState, Tab};
+use crate::create_swap::CreateSwapMode;
 
 /// Context passed to [`resolve_key`] to avoid an 8-argument signature.
 pub struct KeyContext<'a> {
@@ -36,6 +37,15 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext<'_>) -> Option<Action> {
         };
     }
 
+    // Priority 1.5: create-swap modal intercepts keys when open.
+    let modal_open = {
+        let s = state.lock().expect("state mutex poisoned");
+        s.create_swap_modal.is_some()
+    };
+    if modal_open {
+        return handle_create_swap_key(key, state);
+    }
+
     // Global keys (always active)
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => return Some(Action::Quit),
@@ -47,7 +57,6 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext<'_>) -> Option<Action> {
         KeyCode::Char('1') => return Some(Action::SelectTab(1)),
         KeyCode::Char('2') => return Some(Action::SelectTab(2)),
         KeyCode::Char('3') => return Some(Action::SelectTab(3)),
-        KeyCode::Char('4') => return Some(Action::SelectTab(4)),
         _ => {}
     }
 
@@ -140,8 +149,179 @@ fn handle_devices_key(
                 ))
             }
         }
+        KeyCode::Char('n') => {
+            if nix::unistd::geteuid().is_root() {
+                Some(Action::OpenCreateSwap)
+            } else {
+                Some(Action::SetError(
+                    "Requires root — run: sudo swaptop".to_string(),
+                ))
+            }
+        }
         _ => None,
     }
+}
+
+fn handle_create_swap_key(
+    key: KeyEvent,
+    state: &Arc<Mutex<AppState>>,
+) -> Option<Action> {
+    use crate::create_swap::CreateSwapField;
+
+    let (mode_variant, focused_field, path_value, size_value, priority_value, size_unit) = {
+        let s = state.lock().expect("state mutex poisoned");
+        let modal = s.create_swap_modal.as_ref()?;
+        let focused = match &modal.mode {
+            CreateSwapMode::Form { focused_field } => Some(*focused_field),
+            _ => None,
+        };
+        let mode_variant = match &modal.mode {
+            CreateSwapMode::Form { .. } => "form",
+            CreateSwapMode::Progress { .. } => "progress",
+            CreateSwapMode::ConfirmActivateOnly { .. } => "confirm_activate",
+        };
+        (
+            mode_variant,
+            focused,
+            modal.path_input.value().to_string(),
+            modal.size_input.value().to_string(),
+            modal.priority_input.value().to_string(),
+            modal.size_unit,
+        )
+    };
+
+    match mode_variant {
+        "form" => {
+            let focused = focused_field?;
+            match key.code {
+                KeyCode::Esc => Some(Action::CloseCreateSwap),
+                KeyCode::Up | KeyCode::Char('k')
+                    if matches!(
+                        focused,
+                        CreateSwapField::SizeUnit
+                            | CreateSwapField::ActivateAfter
+                            | CreateSwapField::Submit
+                    ) =>
+                {
+                    Some(Action::CreateSwapFocusField(focused.prev()))
+                }
+                KeyCode::Down | KeyCode::Char('j')
+                    if matches!(
+                        focused,
+                        CreateSwapField::SizeUnit
+                            | CreateSwapField::ActivateAfter
+                            | CreateSwapField::Submit
+                    ) =>
+                {
+                    Some(Action::CreateSwapFocusField(focused.next()))
+                }
+                KeyCode::Up => Some(Action::CreateSwapFocusField(focused.prev())),
+                KeyCode::Down => Some(Action::CreateSwapFocusField(focused.next())),
+                KeyCode::Char(' ') if focused == CreateSwapField::SizeUnit => {
+                    Some(Action::CreateSwapToggleUnit)
+                }
+                KeyCode::Char(' ') if focused == CreateSwapField::ActivateAfter => {
+                    Some(Action::CreateSwapToggleActivate)
+                }
+                KeyCode::Enter if focused == CreateSwapField::Submit => validate_and_submit(
+                    state,
+                    &path_value,
+                    &size_value,
+                    &priority_value,
+                    size_unit,
+                ),
+                _ => {
+                    if matches!(
+                        focused,
+                        CreateSwapField::Path | CreateSwapField::Size | CreateSwapField::Priority
+                    ) {
+                        Some(Action::CreateSwapInputEvent(
+                            crossterm::event::Event::Key(key),
+                        ))
+                    } else {
+                        None
+                    }
+                }
+            }
+        }
+        "progress" => match key.code {
+            KeyCode::Esc => {
+                let return_to_form = {
+                    let s = state.lock().expect("state mutex poisoned");
+                    if let Some(modal) = s.create_swap_modal.as_ref() {
+                        if let CreateSwapMode::Progress { steps } = &modal.mode {
+                            steps.iter().any(|s| {
+                                matches!(s.status, crate::create_swap::StepStatus::Error(_))
+                            })
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                };
+                if return_to_form {
+                    Some(Action::CreateSwapReturnToForm)
+                } else {
+                    Some(Action::CloseCreateSwap)
+                }
+            }
+            _ => None,
+        },
+        "confirm_activate" => match key.code {
+            KeyCode::Char('s') | KeyCode::Enter => {
+                Some(Action::CreateSwapSubmit { activate_only: true })
+            }
+            KeyCode::Esc => Some(Action::CloseCreateSwap),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn validate_and_submit(
+    state: &Arc<Mutex<AppState>>,
+    path: &str,
+    size: &str,
+    priority: &str,
+    _unit: crate::create_swap::SizeUnit,
+) -> Option<Action> {
+    let err = |msg: &str| -> Option<Action> {
+        let mut s = state.lock().expect("state mutex poisoned");
+        if let Some(m) = s.create_swap_modal.as_mut() {
+            m.validation_error = Some(msg.to_string());
+        }
+        None
+    };
+
+    if path.trim().is_empty() {
+        return err("Path is required");
+    }
+    if !std::path::Path::new(path).is_absolute() {
+        return err("Path must be absolute");
+    }
+    let size_n: u64 = match size.trim().parse() {
+        Ok(n) => n,
+        Err(_) => return err("Size must be a positive integer"),
+    };
+    if size_n == 0 {
+        return err("Size must be greater than zero");
+    }
+    let prio_n: i32 = match priority.trim().parse() {
+        Ok(n) => n,
+        Err(_) => return err("Priority must be an integer between -1 and 32767"),
+    };
+    if !(-1..=32767).contains(&prio_n) {
+        return err("Priority must be an integer between -1 and 32767");
+    }
+
+    {
+        let mut s = state.lock().expect("state mutex poisoned");
+        if let Some(m) = s.create_swap_modal.as_mut() {
+            m.validation_error = None;
+        }
+    }
+    Some(Action::CreateSwapSubmit { activate_only: false })
 }
 
 pub fn next_sort_column(current: &SortColumn) -> SortColumn {
@@ -294,7 +474,7 @@ mod tests {
     #[test]
     fn global_quit_keys_work_from_any_tab() {
         let state = make_state();
-        for tab in [Tab::Overview, Tab::Processes, Tab::Devices, Tab::CreateSwap] {
+        for tab in [Tab::Overview, Tab::Processes, Tab::Devices] {
             let q = rk(
                 key(KeyCode::Char('q')),
                 &tab,
@@ -358,7 +538,7 @@ mod tests {
     #[test]
     fn number_keys_select_tabs() {
         let state = make_state();
-        for n in [1_usize, 2, 3, 4] {
+        for n in [1_usize, 2, 3] {
             let c = char::from_digit(n as u32, 10).unwrap();
             let action = rk(
                 key(KeyCode::Char(c)),
