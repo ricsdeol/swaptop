@@ -315,7 +315,10 @@ pub fn run_create_swap_steps(
     match alloc_result {
         Ok(()) => send(3, StepStatus::Done),
         Err(e) => {
-            send(3, StepStatus::Error(format!("{} failed: {e}", allocator.label())));
+            send(
+                3,
+                StepStatus::Error(format!("{} failed: {e}", allocator.label())),
+            );
             return;
         }
     }
@@ -414,20 +417,21 @@ fn run_cmd(cmd: &mut StdCommand) -> Result<(), String> {
 }
 
 fn do_swapon(path: &std::path::Path) -> Result<(), String> {
-    let c = std::ffi::CString::new(path.to_string_lossy().as_bytes())
-        .map_err(|e| e.to_string())?;
+    let c = std::ffi::CString::new(path.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
     // SAFETY: `c` is a valid NUL-terminated C string pointing to a valid path.
     let ret = unsafe { nix::libc::swapon(c.as_ptr(), 0) };
     if ret == 0 {
         Ok(())
     } else {
-        Err(format!("swapon failed: {}", std::io::Error::last_os_error()))
+        Err(format!(
+            "swapon failed: {}",
+            std::io::Error::last_os_error()
+        ))
     }
 }
 
 fn do_swapon_with_priority(path: &std::path::Path, priority: i16) -> Result<(), String> {
-    let c = std::ffi::CString::new(path.to_string_lossy().as_bytes())
-        .map_err(|e| e.to_string())?;
+    let c = std::ffi::CString::new(path.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
     // SYS_swapon flags: SWAP_FLAG_PREFER(=0x8000) | (priority & SWAP_FLAG_PRIO_MASK=0x7fff)
     // If priority == -1, omit the prefer flag (kernel-default priority).
     let flags: i32 = if priority < 0 {
@@ -440,7 +444,10 @@ fn do_swapon_with_priority(path: &std::path::Path, priority: i16) -> Result<(), 
     if ret == 0 {
         Ok(())
     } else {
-        Err(format!("swapon failed: {}", std::io::Error::last_os_error()))
+        Err(format!(
+            "swapon failed: {}",
+            std::io::Error::last_os_error()
+        ))
     }
 }
 
@@ -491,7 +498,10 @@ mod tests {
     #[test]
     fn field_prev_wraps_from_path_to_submit() {
         assert_eq!(CreateSwapField::Path.prev(), CreateSwapField::Submit);
-        assert_eq!(CreateSwapField::Submit.prev(), CreateSwapField::ActivateAfter);
+        assert_eq!(
+            CreateSwapField::Submit.prev(),
+            CreateSwapField::ActivateAfter
+        );
     }
 
     #[test]
@@ -562,10 +572,7 @@ tmpfs /tmp tmpfs rw 0 0
 /dev/sda1 / ext4 rw 0 0
 tmpfs /home/user/ramdisk tmpfs rw 0 0
 ";
-        let fs = detect_fs_type(
-            mounts,
-            std::path::Path::new("/home/user/ramdisk/swapfile"),
-        );
+        let fs = detect_fs_type(mounts, std::path::Path::new("/home/user/ramdisk/swapfile"));
         assert_eq!(fs.as_deref(), Some("tmpfs"));
     }
 

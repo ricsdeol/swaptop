@@ -162,10 +162,7 @@ fn handle_devices_key(
     }
 }
 
-fn handle_create_swap_key(
-    key: KeyEvent,
-    state: &Arc<Mutex<AppState>>,
-) -> Option<Action> {
+fn handle_create_swap_key(key: KeyEvent, state: &Arc<Mutex<AppState>>) -> Option<Action> {
     use crate::create_swap::CreateSwapField;
 
     let (mode_variant, focused_field, path_value, size_value, priority_value, size_unit) = {
@@ -223,21 +220,17 @@ fn handle_create_swap_key(
                 KeyCode::Char(' ') if focused == CreateSwapField::ActivateAfter => {
                     Some(Action::CreateSwapToggleActivate)
                 }
-                KeyCode::Enter if focused == CreateSwapField::Submit => validate_and_submit(
-                    state,
-                    &path_value,
-                    &size_value,
-                    &priority_value,
-                    size_unit,
-                ),
+                KeyCode::Enter if focused == CreateSwapField::Submit => {
+                    validate_and_submit(state, &path_value, &size_value, &priority_value, size_unit)
+                }
                 _ => {
                     if matches!(
                         focused,
                         CreateSwapField::Path | CreateSwapField::Size | CreateSwapField::Priority
                     ) {
-                        Some(Action::CreateSwapInputEvent(
-                            crossterm::event::Event::Key(key),
-                        ))
+                        Some(Action::CreateSwapInputEvent(crossterm::event::Event::Key(
+                            key,
+                        )))
                     } else {
                         None
                     }
@@ -269,9 +262,9 @@ fn handle_create_swap_key(
             _ => None,
         },
         "confirm_activate" => match key.code {
-            KeyCode::Char('s') | KeyCode::Enter => {
-                Some(Action::CreateSwapSubmit { activate_only: true })
-            }
+            KeyCode::Char('s') | KeyCode::Enter => Some(Action::CreateSwapSubmit {
+                activate_only: true,
+            }),
             KeyCode::Esc => Some(Action::CloseCreateSwap),
             _ => None,
         },
@@ -321,7 +314,9 @@ fn validate_and_submit(
             m.validation_error = None;
         }
     }
-    Some(Action::CreateSwapSubmit { activate_only: false })
+    Some(Action::CreateSwapSubmit {
+        activate_only: false,
+    })
 }
 
 pub fn next_sort_column(current: &SortColumn) -> SortColumn {

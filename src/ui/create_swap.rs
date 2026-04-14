@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::AppState;
-use crate::create_swap::{CreateSwapField, CreateSwapMode, CreateSwapModal, StepStatus};
+use crate::create_swap::{CreateSwapField, CreateSwapModal, CreateSwapMode, StepStatus};
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     let Some(modal) = state.create_swap_modal.as_ref() else {
@@ -79,7 +79,10 @@ fn render_form(f: &mut Frame, area: Rect, modal: &CreateSwapModal, focused: Crea
         label_span("Size:    "),
         value_span(modal.size_input.value(), focused == CreateSwapField::Size),
         Span::raw(" "),
-        unit_span(modal.size_unit.label(), focused == CreateSwapField::SizeUnit),
+        unit_span(
+            modal.size_unit.label(),
+            focused == CreateSwapField::SizeUnit,
+        ),
     ]);
     f.render_widget(Paragraph::new(size_line), rows[1]);
     f.render_widget(
@@ -118,10 +121,7 @@ fn render_form(f: &mut Frame, area: Rect, modal: &CreateSwapModal, focused: Crea
                 .add_modifier(Modifier::BOLD),
         )
     } else {
-        Span::styled(
-            "   [  Create  ] ",
-            Style::default().fg(Color::White),
-        )
+        Span::styled("   [  Create  ] ", Style::default().fg(Color::White))
     };
     f.render_widget(Paragraph::new(Line::from(submit_label)), rows[5]);
 
@@ -140,7 +140,11 @@ fn render_form(f: &mut Frame, area: Rect, modal: &CreateSwapModal, focused: Crea
 }
 
 fn field_line<'a>(label: &'a str, value: &'a str, focused: bool) -> Line<'a> {
-    Line::from(vec![label_span(label), Span::raw(" "), value_span(value, focused)])
+    Line::from(vec![
+        label_span(label),
+        Span::raw(" "),
+        value_span(value, focused),
+    ])
 }
 
 fn label_span(s: &str) -> Span<'_> {
@@ -236,12 +240,7 @@ fn render_progress(
     f.render_widget(Paragraph::new(full), inner);
 }
 
-fn render_confirm_activate(
-    f: &mut Frame,
-    area: Rect,
-    path: &std::path::Path,
-    size_bytes: u64,
-) {
+fn render_confirm_activate(f: &mut Frame, area: Rect, path: &std::path::Path, size_bytes: u64) {
     let block = Block::default()
         .title(Span::styled(
             " Already a swap file ",

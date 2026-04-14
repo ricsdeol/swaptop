@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use crate::actions::{Action, DeviceOp, DeviceOpKind, OpStatus, SortColumn, SortDir};
-use crate::create_swap::{CreateSwapMode, CreateSwapModal, CreateSwapStep};
+use crate::create_swap::{CreateSwapModal, CreateSwapMode, CreateSwapStep};
 use crate::platform::{Capabilities, MemSnapshot, ProcessRow, SwapDevice};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -277,12 +277,8 @@ impl AppState {
                 {
                     use tui_input::backend::crossterm::EventHandler;
                     let target = match focused_field {
-                        crate::create_swap::CreateSwapField::Path => {
-                            Some(&mut modal.path_input)
-                        }
-                        crate::create_swap::CreateSwapField::Size => {
-                            Some(&mut modal.size_input)
-                        }
+                        crate::create_swap::CreateSwapField::Path => Some(&mut modal.path_input),
+                        crate::create_swap::CreateSwapField::Size => Some(&mut modal.size_input),
                         crate::create_swap::CreateSwapField::Priority => {
                             Some(&mut modal.priority_input)
                         }
@@ -787,7 +783,9 @@ mod tests {
         use crate::create_swap::CreateSwapMode;
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::OpenCreateSwap);
-        state.handle_action(Action::CreateSwapSubmit { activate_only: false });
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
         let modal = state.create_swap_modal.as_ref().unwrap();
         match &modal.mode {
             CreateSwapMode::Progress { steps } => assert_eq!(steps.len(), 7),
@@ -800,7 +798,9 @@ mod tests {
         use crate::create_swap::{CreateSwapMode, StepStatus};
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::OpenCreateSwap);
-        state.handle_action(Action::CreateSwapSubmit { activate_only: false });
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
         state.handle_action(Action::CreateSwapStepUpdate {
             index: 0,
             status: StepStatus::Running,
@@ -823,7 +823,9 @@ mod tests {
             let modal = state.create_swap_modal.as_mut().unwrap();
             modal.validation_error = Some("some prior error".to_string());
         }
-        state.handle_action(Action::CreateSwapSubmit { activate_only: false });
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
         state.handle_action(Action::CreateSwapReturnToForm);
         let modal = state.create_swap_modal.as_ref().unwrap();
         match modal.mode {

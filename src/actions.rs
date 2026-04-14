@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use crate::platform::MemSnapshot;
 use crate::create_swap::{CreateSwapField, StepStatus};
+use crate::platform::MemSnapshot;
 
 // ── Phase 4 types ─────────────────────────────────────────────────────────────
 
@@ -130,7 +130,9 @@ mod tests {
 
     #[test]
     fn create_swap_submit_carries_activate_only_flag() {
-        let a = Action::CreateSwapSubmit { activate_only: true };
+        let a = Action::CreateSwapSubmit {
+            activate_only: true,
+        };
         match a {
             Action::CreateSwapSubmit { activate_only } => assert!(activate_only),
             _ => panic!("wrong variant"),

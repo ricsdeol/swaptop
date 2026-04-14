@@ -1,9 +1,9 @@
+pub(crate) mod create_swap;
 mod design;
 mod devices;
 mod overview;
 mod processes;
 mod statusbar;
-pub(crate) mod create_swap;
 
 use std::rc::Rc;
 
@@ -104,7 +104,6 @@ fn render_tabbar(f: &mut Frame, area: Rect, state: &AppState) {
 
     f.render_widget(tabs, area);
 }
-
 
 #[cfg(test)]
 mod tests {
