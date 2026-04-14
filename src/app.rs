@@ -244,6 +244,53 @@ impl AppState {
             Action::ExitFilterMode => {
                 self.filter_mode = false;
             }
+
+            // Phase 5 — create swap modal
+            Action::OpenCreateSwap => {
+                // Modal will be opened; set to empty form state
+            }
+
+            Action::CloseCreateSwap => {
+                // Modal will be closed
+            }
+
+            Action::CreateSwapReturnToForm => {
+                // Return from progress/confirm screen to form
+            }
+
+            Action::CreateSwapFocusField(_field) => {
+                // Focus changes handled by modal state
+            }
+
+            Action::CreateSwapInputEvent(_event) => {
+                // Input events handled by modal state
+            }
+
+            Action::CreateSwapToggleUnit => {
+                // Unit toggle handled by modal state
+            }
+
+            Action::CreateSwapToggleActivate => {
+                // Activate toggle handled by modal state
+            }
+
+            Action::CreateSwapSubmit { activate_only: _ } => {
+                // Form submission handled by modal state
+            }
+
+            Action::OpenConfirmActivateOnly {
+                path: _,
+                size_bytes: _,
+            } => {
+                // Confirm activation screen
+            }
+
+            Action::CreateSwapStepUpdate {
+                index: _,
+                status: _,
+            } => {
+                // Step progress update
+            }
         }
     }
 }
