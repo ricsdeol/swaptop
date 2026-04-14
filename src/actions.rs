@@ -9,6 +9,8 @@ use crate::platform::MemSnapshot;
 pub enum DeviceOpKind {
     On,
     Off,
+    #[allow(dead_code)]
+    OffAndDelete,
     Reset,
 }
 
@@ -109,6 +111,14 @@ pub enum Action {
     CreateSwapApplyCompletion,
     #[allow(dead_code)]
     CreateSwapClearCompletions,
+
+    // Phase 6 — delete file on swapoff
+    #[allow(dead_code)]
+    RequestConfirmOffDelete,
+    #[allow(dead_code)]
+    ToggleConfirmDeleteFile,
+    #[allow(dead_code)]
+    CancelConfirmOffDelete,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

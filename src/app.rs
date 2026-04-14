@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::actions::{Action, DeviceOp, DeviceOpKind, OpStatus, SortColumn, SortDir};
@@ -10,6 +11,13 @@ pub enum Tab {
     Overview,
     Processes,
     Devices,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfirmOffDelete {
+    #[allow(dead_code)] // read in ui/devices.rs (Task 6)
+    pub path: PathBuf,
+    pub delete_file: bool,
 }
 
 pub struct AppState {
@@ -39,6 +47,9 @@ pub struct AppState {
 
     // Phase 5
     pub create_swap_modal: Option<CreateSwapModal>,
+
+    // Phase 6 — delete file on swapoff
+    pub confirm_off_delete: Option<ConfirmOffDelete>,
 }
 
 impl AppState {
@@ -65,6 +76,7 @@ impl AppState {
             filter_text: String::new(),
             filter_mode: false,
             create_swap_modal: None,
+            confirm_off_delete: None,
         }
     }
 
@@ -376,6 +388,26 @@ impl AppState {
                     modal.completions.clear();
                     modal.completion_sel = None;
                 }
+            }
+
+            // Phase 6 — delete file on swapoff
+            Action::RequestConfirmOffDelete => {
+                if let Some(dev) = self.devices.get(self.selected_dev) {
+                    self.confirm_off_delete = Some(ConfirmOffDelete {
+                        path: dev.path.clone(),
+                        delete_file: false,
+                    });
+                }
+            }
+
+            Action::ToggleConfirmDeleteFile => {
+                if let Some(ref mut modal) = self.confirm_off_delete {
+                    modal.delete_file = !modal.delete_file;
+                }
+            }
+
+            Action::CancelConfirmOffDelete => {
+                self.confirm_off_delete = None;
             }
         }
     }
@@ -1027,5 +1059,66 @@ mod tests {
         snap2.processes = vec![make_process(1, "a", 0)];
         state.handle_action(Action::UpdateSnapshot(snap2));
         assert_eq!(state.selected_row, 0);
+    }
+
+    // ── Phase 6 — ConfirmOffDelete ────────────────────────────────────────────
+
+    #[test]
+    fn request_confirm_off_delete_opens_modal() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: true,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        let modal = state.confirm_off_delete.as_ref().unwrap();
+        assert_eq!(modal.path, PathBuf::from("/swapfile"));
+        assert!(!modal.delete_file);
+    }
+
+    #[test]
+    fn toggle_confirm_delete_file_flips() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: true,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        assert!(!state.confirm_off_delete.as_ref().unwrap().delete_file);
+        state.handle_action(Action::ToggleConfirmDeleteFile);
+        assert!(state.confirm_off_delete.as_ref().unwrap().delete_file);
+        state.handle_action(Action::ToggleConfirmDeleteFile);
+        assert!(!state.confirm_off_delete.as_ref().unwrap().delete_file);
+    }
+
+    #[test]
+    fn cancel_confirm_off_delete_clears_modal() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: true,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        assert!(state.confirm_off_delete.is_some());
+        state.handle_action(Action::CancelConfirmOffDelete);
+        assert!(state.confirm_off_delete.is_none());
     }
 }

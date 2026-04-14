@@ -213,6 +213,7 @@ fn render_modal(f: &mut Frame, area: Rect, state: &AppState) {
     let op_label = match kind {
         DeviceOpKind::On => "Activate",
         DeviceOpKind::Off => "Deactivate",
+        DeviceOpKind::OffAndDelete => "Deactivate & Delete",
         DeviceOpKind::Reset => "Reset",
     };
 

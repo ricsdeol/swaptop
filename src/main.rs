@@ -138,9 +138,10 @@ async fn run(
                         tokio::task::spawn_blocking(move || {
                             let backend = LinuxBackend::new();
                             let result = match kind {
-                                DeviceOpKind::On    => backend.swap_on(&path),
-                                DeviceOpKind::Off   => backend.swap_off(&path),
-                                DeviceOpKind::Reset => backend.swap_reset(&path),
+                                DeviceOpKind::On          => backend.swap_on(&path),
+                                DeviceOpKind::Off         => backend.swap_off(&path),
+                                DeviceOpKind::OffAndDelete => backend.swap_off(&path),
+                                DeviceOpKind::Reset       => backend.swap_reset(&path),
                             };
                             let status = match result {
                                 Ok(_)  => OpStatus::Done,
