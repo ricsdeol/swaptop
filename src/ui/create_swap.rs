@@ -137,6 +137,22 @@ fn render_form(f: &mut Frame, area: Rect, modal: &CreateSwapModal, focused: Crea
         ))
     };
     f.render_widget(Paragraph::new(hint_or_error), rows[7]);
+
+    // Place the real terminal cursor on the focused text field.
+    let cursor_input: Option<(&tui_input::Input, u16)> = match focused {
+        CreateSwapField::Path => Some((&modal.path_input, rows[0].y)),
+        CreateSwapField::Size => Some((&modal.size_input, rows[1].y)),
+        CreateSwapField::Priority => Some((&modal.priority_input, rows[2].y)),
+        _ => None,
+    };
+    if let Some((input, row_y)) = cursor_input {
+        // label is 9 chars + 1 space = 10, then "[" bracket = 1, then visual cursor offset
+        let label_width = 9_u16 + 1; // label + space
+        let bracket = 1_u16; // opening "["
+        let vis_col = cursor_visual_col(input.value(), input.cursor());
+        let cursor_x = inner.x + label_width + bracket + vis_col;
+        f.set_cursor_position((cursor_x, row_y));
+    }
 }
 
 fn field_line<'a>(label: &'a str, value: &'a str, focused: bool) -> Line<'a> {
@@ -288,12 +304,28 @@ fn render_confirm_activate(f: &mut Frame, area: Rect, path: &std::path::Path, si
     f.render_widget(Paragraph::new(text), inner);
 }
 
+fn cursor_visual_col(value: &str, byte_cursor: usize) -> u16 {
+    value[..byte_cursor].chars().count() as u16
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ratatui::layout::Rect;
+
+    #[test]
+    fn cursor_visual_col_ascii() {
+        assert_eq!(cursor_visual_col("/var/swap", 4), 4);
+        assert_eq!(cursor_visual_col("/var/swap", 0), 0);
+        assert_eq!(cursor_visual_col("/var/swap", 9), 9);
+    }
+
+    #[test]
+    fn cursor_visual_col_empty() {
+        assert_eq!(cursor_visual_col("", 0), 0);
+    }
 
     #[test]
     fn centered_rect_stays_within_bounds() {
