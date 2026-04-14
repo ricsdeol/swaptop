@@ -19,6 +19,10 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     if state.confirm_action.is_some() {
         render_modal(f, area, state);
     }
+
+    if state.create_swap_modal.is_some() {
+        crate::ui::create_swap::render(f, area, state);
+    }
 }
 
 fn build_layout(area: Rect) -> std::rc::Rc<[Rect]> {
@@ -163,6 +167,8 @@ fn render_footer(f: &mut Frame, area: Rect, state: &AppState) {
         desc_span(" deactivate  "),
         key_span("r"),
         desc_span(" reset  "),
+        key_span("n"),
+        desc_span(" new swap  "),
         key_span("j/k"),
         desc_span(" navigate"),
     ]);

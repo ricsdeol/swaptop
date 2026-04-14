@@ -1,11 +1,316 @@
-//! Phase 5 — Create swap modal renderer. Real implementation lands in Task 8.
+//! Phase 5 — Create swap modal renderer. Overlays the Devices tab area.
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::AppState;
+use crate::create_swap::{CreateSwapField, CreateSwapMode, CreateSwapModal, StepStatus};
 
-#[allow(dead_code)]
-pub fn render(_f: &mut Frame, _area: Rect, _state: &AppState) {
-    // Stub — replaced in Task 8.
+pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
+    let Some(modal) = state.create_swap_modal.as_ref() else {
+        return;
+    };
+
+    let modal_rect = centered_rect(area, 64, 18);
+    f.render_widget(Clear, modal_rect);
+
+    match &modal.mode {
+        CreateSwapMode::Form { focused_field } => {
+            render_form(f, modal_rect, modal, *focused_field);
+        }
+        CreateSwapMode::Progress { steps } => {
+            render_progress(f, modal_rect, modal, steps);
+        }
+        CreateSwapMode::ConfirmActivateOnly { path, size_bytes } => {
+            render_confirm_activate(f, modal_rect, path, *size_bytes);
+        }
+    }
+}
+
+fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
+    let w = width.min(area.width);
+    let h = height.min(area.height);
+    let x = area.x + (area.width.saturating_sub(w)) / 2;
+    let y = area.y + (area.height.saturating_sub(h)) / 2;
+    Rect::new(x, y, w, h)
+}
+
+fn render_form(f: &mut Frame, area: Rect, modal: &CreateSwapModal, focused: CreateSwapField) {
+    let block = Block::default()
+        .title(Span::styled(
+            " New Swap File ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // Path
+            Constraint::Length(1), // Size + unit
+            Constraint::Length(1), // Priority
+            Constraint::Length(1), // Activate
+            Constraint::Length(1), // spacer
+            Constraint::Length(1), // Submit
+            Constraint::Length(1), // spacer
+            Constraint::Length(1), // validation error or hint
+            Constraint::Min(0),
+        ])
+        .split(inner);
+
+    f.render_widget(
+        Paragraph::new(field_line(
+            "Path:    ",
+            modal.path_input.value(),
+            focused == CreateSwapField::Path,
+        )),
+        rows[0],
+    );
+    let size_line = Line::from(vec![
+        label_span("Size:    "),
+        value_span(modal.size_input.value(), focused == CreateSwapField::Size),
+        Span::raw(" "),
+        unit_span(modal.size_unit.label(), focused == CreateSwapField::SizeUnit),
+    ]);
+    f.render_widget(Paragraph::new(size_line), rows[1]);
+    f.render_widget(
+        Paragraph::new(field_line(
+            "Priority:",
+            modal.priority_input.value(),
+            focused == CreateSwapField::Priority,
+        )),
+        rows[2],
+    );
+
+    let checkbox = if modal.activate_after { "[x]" } else { "[ ]" };
+    let activate_line = Line::from(vec![
+        label_span("Activate:"),
+        Span::raw(" "),
+        Span::styled(
+            format!("{checkbox} activate after create"),
+            if focused == CreateSwapField::ActivateAfter {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            },
+        ),
+    ]);
+    f.render_widget(Paragraph::new(activate_line), rows[3]);
+
+    let submit_label = if focused == CreateSwapField::Submit {
+        Span::styled(
+            " ▶ [  Create  ] ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else {
+        Span::styled(
+            "   [  Create  ] ",
+            Style::default().fg(Color::White),
+        )
+    };
+    f.render_widget(Paragraph::new(Line::from(submit_label)), rows[5]);
+
+    let hint_or_error = if let Some(err) = &modal.validation_error {
+        Line::from(Span::styled(
+            format!("  {err}"),
+            Style::default().fg(Color::Red),
+        ))
+    } else {
+        Line::from(Span::styled(
+            "  ↑/↓ navigate · Space toggle · Enter submit · Esc cancel",
+            Style::default().fg(Color::DarkGray),
+        ))
+    };
+    f.render_widget(Paragraph::new(hint_or_error), rows[7]);
+}
+
+fn field_line<'a>(label: &'a str, value: &'a str, focused: bool) -> Line<'a> {
+    Line::from(vec![label_span(label), Span::raw(" "), value_span(value, focused)])
+}
+
+fn label_span(s: &str) -> Span<'_> {
+    Span::styled(s.to_string(), Style::default().fg(Color::DarkGray))
+}
+
+fn value_span<'a>(s: &'a str, focused: bool) -> Span<'a> {
+    let style = if focused {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let padded = format!("[{:<30}]", s);
+    Span::styled(padded, style)
+}
+
+fn unit_span(s: &str, focused: bool) -> Span<'_> {
+    let style = if focused {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    Span::styled(format!(" {s} "), style)
+}
+
+fn render_progress(
+    f: &mut Frame,
+    area: Rect,
+    modal: &CreateSwapModal,
+    steps: &[crate::create_swap::CreateSwapStep],
+) {
+    let title = format!(" Creating {} ", modal.path_input.value());
+    let block = Block::default()
+        .title(Span::styled(
+            title,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let lines: Vec<Line> = steps
+        .iter()
+        .map(|s| {
+            let (icon, color) = match &s.status {
+                StepStatus::Pending => ("·", Color::DarkGray),
+                StepStatus::Running => ("⏳", Color::Yellow),
+                StepStatus::Done => ("✓", Color::Green),
+                StepStatus::Error(_) => ("✗", Color::Red),
+            };
+            let mut spans = vec![
+                Span::raw("  "),
+                Span::styled(icon.to_string(), Style::default().fg(color)),
+                Span::raw("  "),
+                Span::styled(s.label.clone(), Style::default().fg(Color::White)),
+            ];
+            if let StepStatus::Error(msg) = &s.status {
+                spans.push(Span::raw("  "));
+                spans.push(Span::styled(msg.clone(), Style::default().fg(Color::Red)));
+            }
+            Line::from(spans)
+        })
+        .collect();
+
+    let has_error = steps
+        .iter()
+        .any(|s| matches!(s.status, StepStatus::Error(_)));
+    let footer = if has_error {
+        Line::from(Span::styled(
+            "  Esc return to form",
+            Style::default().fg(Color::DarkGray),
+        ))
+    } else {
+        Line::from(Span::styled(
+            "  Esc cancel (before file write)",
+            Style::default().fg(Color::DarkGray),
+        ))
+    };
+
+    let mut full = lines;
+    full.push(Line::from(""));
+    full.push(footer);
+
+    f.render_widget(Paragraph::new(full), inner);
+}
+
+fn render_confirm_activate(
+    f: &mut Frame,
+    area: Rect,
+    path: &std::path::Path,
+    size_bytes: u64,
+) {
+    let block = Block::default()
+        .title(Span::styled(
+            " Already a swap file ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let pretty_size = human_bytes::human_bytes(size_bytes as f64);
+    let text = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("  {}", path.display()),
+            Style::default().fg(Color::White),
+        )),
+        Line::from(Span::styled(
+            format!("  already contains a {pretty_size} swap area."),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                " s ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" activate    ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                " Esc ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" cancel", Style::default().fg(Color::DarkGray)),
+        ]),
+    ];
+    f.render_widget(Paragraph::new(text), inner);
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn centered_rect_stays_within_bounds() {
+        let area = Rect::new(0, 0, 100, 40);
+        let r = centered_rect(area, 60, 20);
+        assert_eq!(r.width, 60);
+        assert_eq!(r.height, 20);
+        assert!(r.x + r.width <= area.x + area.width);
+        assert!(r.y + r.height <= area.y + area.height);
+    }
+
+    #[test]
+    fn centered_rect_clamps_when_area_smaller_than_requested() {
+        let area = Rect::new(0, 0, 30, 10);
+        let r = centered_rect(area, 60, 20);
+        assert_eq!(r.width, 30);
+        assert_eq!(r.height, 10);
+    }
 }
