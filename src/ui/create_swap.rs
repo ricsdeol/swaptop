@@ -153,6 +153,13 @@ fn render_form(f: &mut Frame, area: Rect, modal: &CreateSwapModal, focused: Crea
         let cursor_x = inner.x + label_width + bracket + vis_col;
         f.set_cursor_position((cursor_x, row_y));
     }
+
+    // Render autocomplete popup if completions are showing.
+    if !modal.completions.is_empty() {
+        // Anchor = the Path value span area (row 0), offset for label+space+bracket
+        let popup_anchor = Rect::new(inner.x + 10, rows[0].y, 32, 1);
+        render_completions_popup(f, popup_anchor, &modal.completions, modal.completion_sel);
+    }
 }
 
 fn field_line<'a>(label: &'a str, value: &'a str, focused: bool) -> Line<'a> {
@@ -304,6 +311,54 @@ fn render_confirm_activate(f: &mut Frame, area: Rect, path: &std::path::Path, si
     f.render_widget(Paragraph::new(text), inner);
 }
 
+fn render_completions_popup(
+    f: &mut Frame,
+    anchor: Rect,
+    completions: &[String],
+    sel: Option<usize>,
+) {
+    if completions.is_empty() {
+        return;
+    }
+    let visible = completions.len().min(6);
+    let popup_width = 32_u16; // matches value span width
+    let popup_height = visible as u16 + 2; // +2 for border
+    let popup_x = anchor.x;
+    let popup_y = anchor.y + 1; // directly below the path row
+    let popup_rect = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let items: Vec<Line> = completions
+        .iter()
+        .take(visible)
+        .enumerate()
+        .map(|(i, path)| {
+            let style = if Some(i) == sel {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            // Truncate to fit within popup width minus borders
+            let max_chars = (popup_width - 2) as usize;
+            let display: String = if path.len() > max_chars {
+                format!("..{}", &path[path.len() - max_chars + 2..])
+            } else {
+                path.clone()
+            };
+            Line::styled(display, style)
+        })
+        .collect();
+
+    f.render_widget(Clear, popup_rect);
+    f.render_widget(Paragraph::new(items).block(block), popup_rect);
+}
+
 fn cursor_visual_col(value: &str, byte_cursor: usize) -> u16 {
     value[..byte_cursor].chars().count() as u16
 }
@@ -343,5 +398,18 @@ mod tests {
         let r = centered_rect(area, 60, 20);
         assert_eq!(r.width, 30);
         assert_eq!(r.height, 10);
+    }
+
+    #[test]
+    fn completion_display_truncates_long_paths() {
+        let long_path = "/very/long/path/that/exceeds/thirty/characters/swapfile";
+        let max_chars = 30_usize;
+        let display: String = if long_path.len() > max_chars {
+            format!("..{}", &long_path[long_path.len() - max_chars + 2..])
+        } else {
+            long_path.to_string()
+        };
+        assert!(display.len() <= max_chars);
+        assert!(display.starts_with(".."));
     }
 }
