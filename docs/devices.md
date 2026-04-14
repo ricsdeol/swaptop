@@ -33,9 +33,10 @@ If you run without root, you can still view device status — only control is re
 | `o`         | Activate selected device (`swapon`) |
 | `f`         | Deactivate selected device (`swapoff`) |
 | `r`         | Reset selected device (`swapoff` + 100ms + `swapon`) |
+| `n`         | Create new swap file (modal wizard, requires root) |
 | `s`         | Confirm action (when modal is open) |
 | `Esc`       | Cancel confirmation modal |
-| `Tab` / `1-4` | Switch tabs |
+| `Tab` / `1-3` | Switch tabs |
 | `q`         | Quit |
 
 ## Status Indicators

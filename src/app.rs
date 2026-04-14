@@ -360,7 +360,7 @@ mod tests {
         MemSnapshot {
             timestamp: Instant::now(),
             ram: SwapInfo::new(16 * 1024 * 1024 * 1024, 8 * 1024 * 1024 * 1024),
-            swap: SwapInfo::new(4 * 1024 * 1024 * 1024, 1 * 1024 * 1024 * 1024),
+            swap: SwapInfo::new(4 * 1024 * 1024 * 1024, 1024 * 1024 * 1024),
             devices: vec![],
             processes: vec![],
         }
@@ -370,7 +370,7 @@ mod tests {
         SwapDevice {
             path: path.into(),
             total: 4 * 1024 * 1024 * 1024,
-            used: 1 * 1024 * 1024 * 1024,
+            used: 1024 * 1024 * 1024,
             priority: -1,
             kind: SwapKind::Partition,
             active: true,
@@ -472,7 +472,7 @@ mod tests {
         snap.devices = vec![SwapDevice {
             path: "/dev/sda2".into(),
             total: 4 * 1024 * 1024 * 1024,
-            used: 1 * 1024 * 1024 * 1024,
+            used: 1024 * 1024 * 1024,
             priority: -1,
             kind: SwapKind::Partition,
             active: true,
