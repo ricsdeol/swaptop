@@ -264,32 +264,32 @@ impl AppState {
             }
 
             Action::CreateSwapFocusField(field) => {
-                if let Some(modal) = self.create_swap_modal.as_mut() {
-                    if let CreateSwapMode::Form { focused_field } = &mut modal.mode {
-                        *focused_field = field;
-                    }
+                if let Some(modal) = self.create_swap_modal.as_mut()
+                    && let CreateSwapMode::Form { focused_field } = &mut modal.mode
+                {
+                    *focused_field = field;
                 }
             }
 
             Action::CreateSwapInputEvent(event) => {
-                if let Some(modal) = self.create_swap_modal.as_mut() {
-                    if let CreateSwapMode::Form { focused_field } = modal.mode {
-                        use tui_input::backend::crossterm::EventHandler;
-                        let target = match focused_field {
-                            crate::create_swap::CreateSwapField::Path => {
-                                Some(&mut modal.path_input)
-                            }
-                            crate::create_swap::CreateSwapField::Size => {
-                                Some(&mut modal.size_input)
-                            }
-                            crate::create_swap::CreateSwapField::Priority => {
-                                Some(&mut modal.priority_input)
-                            }
-                            _ => None,
-                        };
-                        if let Some(input) = target {
-                            let _ = input.handle_event(&event);
+                if let Some(modal) = self.create_swap_modal.as_mut()
+                    && let CreateSwapMode::Form { focused_field } = modal.mode
+                {
+                    use tui_input::backend::crossterm::EventHandler;
+                    let target = match focused_field {
+                        crate::create_swap::CreateSwapField::Path => {
+                            Some(&mut modal.path_input)
                         }
+                        crate::create_swap::CreateSwapField::Size => {
+                            Some(&mut modal.size_input)
+                        }
+                        crate::create_swap::CreateSwapField::Priority => {
+                            Some(&mut modal.priority_input)
+                        }
+                        _ => None,
+                    };
+                    if let Some(input) = target {
+                        let _ = input.handle_event(&event);
                     }
                 }
             }
@@ -330,12 +330,11 @@ impl AppState {
             }
 
             Action::CreateSwapStepUpdate { index, status } => {
-                if let Some(modal) = self.create_swap_modal.as_mut() {
-                    if let CreateSwapMode::Progress { steps } = &mut modal.mode {
-                        if let Some(step) = steps.get_mut(index) {
-                            step.status = status;
-                        }
-                    }
+                if let Some(modal) = self.create_swap_modal.as_mut()
+                    && let CreateSwapMode::Progress { steps } = &mut modal.mode
+                    && let Some(step) = steps.get_mut(index)
+                {
+                    step.status = status;
                 }
             }
         }
