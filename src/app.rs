@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use crate::actions::{Action, DeviceOp, DeviceOpKind, OpStatus, SortColumn, SortDir};
-use crate::create_swap::{CreateSwapMode, CreateSwapModal, CreateSwapStep, StepStatus};
+use crate::create_swap::{CreateSwapMode, CreateSwapModal, CreateSwapStep};
 use crate::platform::{Capabilities, MemSnapshot, ProcessRow, SwapDevice};
 
 #[derive(Debug, Clone, PartialEq)]
