@@ -14,6 +14,7 @@ nix         = { version = "0.31.2", features = ["process", "signal", "mount", "u
 color-eyre  = "0.6.5"
 human_bytes = "0.4.3"
 glob        = "0.3.3"
+tui-input   = { version = "0.15", features = ["crossterm"] }
 
 [dev-dependencies]
 proptest = "1"
