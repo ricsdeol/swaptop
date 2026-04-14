@@ -140,7 +140,15 @@ async fn run(
                             let result = match kind {
                                 DeviceOpKind::On          => backend.swap_on(&path),
                                 DeviceOpKind::Off         => backend.swap_off(&path),
-                                DeviceOpKind::OffAndDelete => backend.swap_off(&path),
+                                DeviceOpKind::OffAndDelete => {
+                                    backend.swap_off(&path).and_then(|()| {
+                                        std::fs::remove_file(&path).map_err(|e| {
+                                            color_eyre::eyre::eyre!(
+                                                "deactivated; delete failed: {e}"
+                                            )
+                                        })
+                                    })
+                                }
                                 DeviceOpKind::Reset       => backend.swap_reset(&path),
                             };
                             let status = match result {

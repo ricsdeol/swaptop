@@ -98,6 +98,34 @@ fn handle_devices_key(
     has_devices: bool,
     state: &Arc<Mutex<AppState>>,
 ) -> Option<Action> {
+    // Off-delete modal takes priority when open
+    {
+        let off_delete_open = {
+            let s = state.lock().expect("state mutex poisoned");
+            s.confirm_off_delete.is_some()
+        };
+        if off_delete_open {
+            return match code {
+                KeyCode::Char(' ') => Some(Action::ToggleConfirmDeleteFile),
+                KeyCode::Char('s') | KeyCode::Enter => {
+                    let (path, delete_file) = {
+                        let s = state.lock().expect("state mutex poisoned");
+                        let modal = s.confirm_off_delete.as_ref()?;
+                        (modal.path.clone(), modal.delete_file)
+                    };
+                    let kind = if delete_file {
+                        DeviceOpKind::OffAndDelete
+                    } else {
+                        DeviceOpKind::Off
+                    };
+                    Some(Action::ExecuteDeviceOp { path, kind })
+                }
+                KeyCode::Esc => Some(Action::CancelConfirmOffDelete),
+                _ => None,
+            };
+        }
+    }
+
     if let Some(kind) = confirm_action {
         // Modal is open — only 's'/Enter and Esc are active
         return match code {
@@ -142,7 +170,18 @@ fn handle_devices_key(
         }
         KeyCode::Char('f') if has_devices => {
             if nix::unistd::geteuid().is_root() {
-                Some(Action::RequestConfirm(DeviceOpKind::Off))
+                let is_file_type = {
+                    let s = state.lock().expect("state mutex poisoned");
+                    s.devices
+                        .get(selected_dev)
+                        .map(|d| matches!(d.kind, crate::platform::SwapKind::File))
+                        .unwrap_or(false)
+                };
+                if is_file_type {
+                    Some(Action::RequestConfirmOffDelete)
+                } else {
+                    Some(Action::RequestConfirm(DeviceOpKind::Off))
+                }
             } else {
                 Some(Action::SetError(
                     "Requires root — run: sudo swaptop".to_string(),

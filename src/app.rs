@@ -207,6 +207,7 @@ impl AppState {
 
             Action::ExecuteDeviceOp { path, kind } => {
                 self.confirm_action = None;
+                self.confirm_off_delete = None;
                 self.device_op = Some(DeviceOp {
                     path,
                     kind,

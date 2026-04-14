@@ -20,6 +20,10 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
         render_modal(f, area, state);
     }
 
+    if state.confirm_off_delete.is_some() {
+        render_off_delete_modal(f, area, state);
+    }
+
     if state.create_swap_modal.is_some() {
         crate::ui::create_swap::render(f, area, state);
     }
@@ -254,6 +258,79 @@ fn render_modal(f: &mut Frame, area: Rect, state: &AppState) {
                 ))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Yellow)),
+        ),
+        modal_rect,
+    );
+}
+
+fn render_off_delete_modal(f: &mut Frame, area: Rect, state: &AppState) {
+    let Some(modal) = &state.confirm_off_delete else {
+        return;
+    };
+
+    let modal_width = (area.width * 60 / 100).max(48);
+    let modal_height = 9_u16;
+    let modal_x = area.x + (area.width.saturating_sub(modal_width)) / 2;
+    let modal_y = area.y + (area.height.saturating_sub(modal_height)) / 2;
+    let modal_rect = Rect::new(modal_x, modal_y, modal_width, modal_height);
+
+    let border_color = if modal.delete_file {
+        Color::Red
+    } else {
+        Color::Yellow
+    };
+
+    let checkbox = if modal.delete_file { "[x]" } else { "[ ]" };
+    let checkbox_style = if modal.delete_file {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
+    };
+
+    let text = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("  {}", modal.path.display()),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "  This will deactivate the swap area.",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{checkbox} also delete file (cannot be undone)"),
+                checkbox_style,
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("  "),
+            key_span("Space"),
+            desc_span(" toggle    "),
+            key_span("s"),
+            desc_span(" confirm    "),
+            key_span("Esc"),
+            desc_span(" cancel"),
+        ]),
+    ];
+
+    f.render_widget(Clear, modal_rect);
+    f.render_widget(
+        Paragraph::new(text).block(
+            Block::default()
+                .title(Span::styled(
+                    " Deactivate Swap File ",
+                    Style::default()
+                        .fg(border_color)
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color)),
         ),
         modal_rect,
     );
