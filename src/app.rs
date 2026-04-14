@@ -340,6 +340,43 @@ impl AppState {
                     step.status = status;
                 }
             }
+
+            Action::CreateSwapSetCompletions(items) => {
+                if let Some(ref mut modal) = self.create_swap_modal {
+                    modal.completion_sel = if items.is_empty() { None } else { Some(0) };
+                    modal.completions = items;
+                }
+            }
+
+            Action::CreateSwapCompletionMove(delta) => {
+                if let Some(ref mut modal) = self.create_swap_modal
+                    && !modal.completions.is_empty()
+                {
+                    let len = modal.completions.len() as i16;
+                    let cur = modal.completion_sel.unwrap_or(0) as i16;
+                    let next = ((cur + delta) % len + len) % len;
+                    modal.completion_sel = Some(next as usize);
+                }
+            }
+
+            Action::CreateSwapApplyCompletion => {
+                if let Some(ref mut modal) = self.create_swap_modal {
+                    if let Some(sel) = modal.completion_sel
+                        && let Some(value) = modal.completions.get(sel).cloned()
+                    {
+                        modal.path_input = tui_input::Input::from(value);
+                    }
+                    modal.completions.clear();
+                    modal.completion_sel = None;
+                }
+            }
+
+            Action::CreateSwapClearCompletions => {
+                if let Some(ref mut modal) = self.create_swap_modal {
+                    modal.completions.clear();
+                    modal.completion_sel = None;
+                }
+            }
         }
     }
 }
@@ -862,6 +899,99 @@ mod tests {
             }
             _ => panic!("expected ConfirmActivateOnly mode"),
         }
+    }
+
+    // ── Phase 6 — autocomplete ────────────────────────────────────────────────
+
+    #[test]
+    fn set_completions_stores_and_selects_first() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![
+            "/swapfile".to_string(),
+            "/swap.img".to_string(),
+        ]));
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert_eq!(modal.completions.len(), 2);
+        assert_eq!(modal.completion_sel, Some(0));
+    }
+
+    #[test]
+    fn set_completions_empty_sets_sel_none() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![]));
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert!(modal.completions.is_empty());
+        assert_eq!(modal.completion_sel, None);
+    }
+
+    #[test]
+    fn completion_move_wraps_forward() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+        ]));
+        state.handle_action(Action::CreateSwapCompletionMove(1));
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().completion_sel,
+            Some(1)
+        );
+        state.handle_action(Action::CreateSwapCompletionMove(1));
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().completion_sel,
+            Some(2)
+        );
+        state.handle_action(Action::CreateSwapCompletionMove(1));
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().completion_sel,
+            Some(0)
+        ); // wrap
+    }
+
+    #[test]
+    fn completion_move_wraps_backward() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![
+            "a".to_string(),
+            "b".to_string(),
+        ]));
+        state.handle_action(Action::CreateSwapCompletionMove(-1));
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().completion_sel,
+            Some(1)
+        ); // wrap
+    }
+
+    #[test]
+    fn apply_completion_sets_path_and_clears() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![
+            "/swapfile".to_string(),
+            "/swap.img".to_string(),
+        ]));
+        state.handle_action(Action::CreateSwapCompletionMove(1)); // select /swap.img
+        state.handle_action(Action::CreateSwapApplyCompletion);
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert_eq!(modal.path_input.value(), "/swap.img");
+        assert!(modal.completions.is_empty());
+        assert_eq!(modal.completion_sel, None);
+    }
+
+    #[test]
+    fn clear_completions_resets_state() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec!["x".to_string()]));
+        state.handle_action(Action::CreateSwapClearCompletions);
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert!(modal.completions.is_empty());
+        assert_eq!(modal.completion_sel, None);
     }
 
     // ── UpdateSnapshot sorts ──────────────────────────────────────────────────

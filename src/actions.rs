@@ -65,7 +65,10 @@ pub enum Action {
     // Phase 4 — operation flow
     RequestConfirm(DeviceOpKind),
     CancelConfirm,
-    ExecuteDeviceOp { path: PathBuf, kind: DeviceOpKind },
+    ExecuteDeviceOp {
+        path: PathBuf,
+        kind: DeviceOpKind,
+    },
     DeviceOpUpdate(DeviceOp),
 
     // Phase 2 — processes navigation
@@ -85,9 +88,27 @@ pub enum Action {
     CreateSwapInputEvent(crossterm::event::Event),
     CreateSwapToggleUnit,
     CreateSwapToggleActivate,
-    CreateSwapSubmit { activate_only: bool },
-    OpenConfirmActivateOnly { path: PathBuf, size_bytes: u64 },
-    CreateSwapStepUpdate { index: usize, status: StepStatus },
+    CreateSwapSubmit {
+        activate_only: bool,
+    },
+    OpenConfirmActivateOnly {
+        path: PathBuf,
+        size_bytes: u64,
+    },
+    CreateSwapStepUpdate {
+        index: usize,
+        status: StepStatus,
+    },
+
+    // Phase 6 — path autocomplete (constructed in Task 3 key handler)
+    #[allow(dead_code)]
+    CreateSwapSetCompletions(Vec<String>),
+    #[allow(dead_code)]
+    CreateSwapCompletionMove(i16),
+    #[allow(dead_code)]
+    CreateSwapApplyCompletion,
+    #[allow(dead_code)]
+    CreateSwapClearCompletions,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

@@ -124,6 +124,9 @@ pub struct CreateSwapModal {
     pub size_unit: SizeUnit,
     pub activate_after: bool,
     pub validation_error: Option<String>,
+    // Phase 6 — path autocomplete
+    pub completions: Vec<String>,
+    pub completion_sel: Option<usize>,
 }
 
 impl Default for CreateSwapModal {
@@ -138,6 +141,8 @@ impl Default for CreateSwapModal {
             size_unit: SizeUnit::Gb,
             activate_after: true,
             validation_error: None,
+            completions: Vec::new(),
+            completion_sel: None,
         }
     }
 }
