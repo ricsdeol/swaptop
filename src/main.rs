@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use color_eyre::Result;
 use crossterm::event::{Event as CrosstermEvent, EventStream};
@@ -42,7 +42,10 @@ async fn main() -> Result<()> {
             .lock()
             .expect("state mutex poisoned")
             .handle_action(Action::UpdateSnapshot(snap)),
-        Err(e) => state.lock().expect("state mutex poisoned").error_msg = Some(e.to_string()),
+        Err(e) => {
+            state.lock().expect("state mutex poisoned").error_msg =
+                Some((e.to_string(), Instant::now()))
+        }
     }
 
     let mut terminal = tui::init()?;
@@ -92,7 +95,7 @@ async fn run(
             _ = tick.tick() => {
                 match col.collect().await {
                     Ok(snap) => state.lock().expect("state mutex poisoned").handle_action(Action::UpdateSnapshot(snap)),
-                    Err(e)   => state.lock().expect("state mutex poisoned").error_msg = Some(e.to_string()),
+                    Err(e)   => state.lock().expect("state mutex poisoned").error_msg = Some((e.to_string(), Instant::now())),
                 }
             }
 

@@ -20,7 +20,7 @@ pub struct AppState {
     pub current: Option<MemSnapshot>,
     pub devices: Vec<SwapDevice>,
     pub capabilities: Capabilities,
-    pub error_msg: Option<String>,
+    pub error_msg: Option<(String, Instant)>,
     pub start_time: Instant,
     pub should_quit: bool,
 
@@ -157,13 +157,20 @@ impl AppState {
                     self.selected_dev = self.selected_dev.min(self.devices.len() - 1);
                 }
                 self.current = Some(snapshot);
-                self.error_msg = None;
+                // Clear stale errors (older than 5 s); keep recent ones visible.
+                if self
+                    .error_msg
+                    .as_ref()
+                    .is_some_and(|(_, t)| t.elapsed().as_secs() >= 5)
+                {
+                    self.error_msg = None;
+                }
             }
 
             Action::Refresh => {} // collector tick handles it
 
             Action::SetError(msg) => {
-                self.error_msg = Some(msg);
+                self.error_msg = Some((msg, Instant::now()));
             }
 
             // Phase 4 — device navigation
@@ -197,7 +204,7 @@ impl AppState {
 
             Action::DeviceOpUpdate(op) => {
                 if let OpStatus::Error(ref msg) = op.status {
-                    self.error_msg = Some(msg.clone());
+                    self.error_msg = Some((msg.clone(), Instant::now()));
                 }
                 self.device_op = Some(op);
             }
@@ -456,9 +463,10 @@ mod tests {
     #[test]
     fn update_snapshot_clears_error_message() {
         let mut state = AppState::new(make_caps());
-        state.error_msg = Some("previous error".to_string());
+        // A fresh error (< 5 s old) must NOT be cleared by UpdateSnapshot.
+        state.handle_action(Action::SetError("previous error".to_string()));
         state.handle_action(Action::UpdateSnapshot(make_snapshot()));
-        assert!(state.error_msg.is_none());
+        assert!(state.error_msg.is_some());
     }
 
     #[test]
@@ -566,7 +574,7 @@ mod tests {
             kind: DeviceOpKind::Off,
             status: OpStatus::Error("swapoff failed: EPERM".to_string()),
         }));
-        assert_eq!(state.error_msg, Some("swapoff failed: EPERM".to_string()));
+        assert!(matches!(&state.error_msg, Some((msg, _)) if msg == "swapoff failed: EPERM"));
         assert!(state.device_op.is_some());
     }
 
@@ -574,7 +582,7 @@ mod tests {
     fn set_error_stores_message() {
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::SetError("Requires root".to_string()));
-        assert_eq!(state.error_msg, Some("Requires root".to_string()));
+        assert!(matches!(&state.error_msg, Some((msg, _)) if msg == "Requires root"));
     }
 
     #[test]

@@ -33,7 +33,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
         })
         .collect();
 
-    if let Some(err) = &state.error_msg {
+    if let Some((err, _)) = &state.error_msg {
         spans.push(Span::styled(
             format!("  ⚠ {err}"),
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
