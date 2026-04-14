@@ -149,7 +149,8 @@ fn render_form(f: &mut Frame, area: Rect, modal: &CreateSwapModal, focused: Crea
         // label is 9 chars + 1 space = 10, then "[" bracket = 1, then visual cursor offset
         let label_width = 9_u16 + 1; // label + space
         let bracket = 1_u16; // opening "["
-        let vis_col = cursor_visual_col(input.value(), input.cursor());
+        // Clamp to the visible field width (30 chars) so the cursor stays inside the "[]" span.
+        let vis_col = cursor_visual_col(input.value(), input.cursor()).min(30);
         let cursor_x = inner.x + label_width + bracket + vis_col;
         f.set_cursor_position((cursor_x, row_y));
     }
@@ -344,10 +345,13 @@ fn render_completions_popup(
             } else {
                 Style::default().fg(Color::White)
             };
-            // Truncate to fit within popup width minus borders
+            // Truncate to fit within popup width minus borders.
+            // Use char-boundary-safe slicing to handle non-ASCII paths.
             let max_chars = (popup_width - 2) as usize;
-            let display: String = if path.len() > max_chars {
-                format!("..{}", &path[path.len() - max_chars + 2..])
+            let char_count = path.chars().count();
+            let display: String = if char_count > max_chars {
+                let tail: String = path.chars().skip(char_count - (max_chars - 2)).collect();
+                format!("..{tail}")
             } else {
                 path.clone()
             };
@@ -404,12 +408,33 @@ mod tests {
     fn completion_display_truncates_long_paths() {
         let long_path = "/very/long/path/that/exceeds/thirty/characters/swapfile";
         let max_chars = 30_usize;
-        let display: String = if long_path.len() > max_chars {
-            format!("..{}", &long_path[long_path.len() - max_chars + 2..])
+        let char_count = long_path.chars().count();
+        let display: String = if char_count > max_chars {
+            let tail: String = long_path
+                .chars()
+                .skip(char_count - (max_chars - 2))
+                .collect();
+            format!("..{tail}")
         } else {
             long_path.to_string()
         };
-        assert!(display.len() <= max_chars);
+        assert!(display.chars().count() <= max_chars);
+        assert!(display.starts_with(".."));
+    }
+
+    #[test]
+    fn completion_display_truncates_non_ascii_paths() {
+        // Non-ASCII path — byte-based slicing would panic; char-based must not.
+        let path = "/home/rénata/swap/fichier-échange-très-long-nom";
+        let max_chars = 30_usize;
+        let char_count = path.chars().count();
+        let display: String = if char_count > max_chars {
+            let tail: String = path.chars().skip(char_count - (max_chars - 2)).collect();
+            format!("..{tail}")
+        } else {
+            path.to_string()
+        };
+        assert!(display.chars().count() <= max_chars);
         assert!(display.starts_with(".."));
     }
 }
