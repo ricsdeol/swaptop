@@ -165,7 +165,15 @@ fn handle_devices_key(
 fn handle_create_swap_key(key: KeyEvent, state: &Arc<Mutex<AppState>>) -> Option<Action> {
     use crate::create_swap::CreateSwapField;
 
-    let (mode_variant, focused_field, path_value, size_value, priority_value, size_unit) = {
+    let (
+        mode_variant,
+        focused_field,
+        path_value,
+        size_value,
+        priority_value,
+        size_unit,
+        completions_showing,
+    ) = {
         let s = state.lock().expect("state mutex poisoned");
         let modal = s.create_swap_modal.as_ref()?;
         let focused = match &modal.mode {
@@ -184,58 +192,62 @@ fn handle_create_swap_key(key: KeyEvent, state: &Arc<Mutex<AppState>>) -> Option
             modal.size_input.value().to_string(),
             modal.priority_input.value().to_string(),
             modal.size_unit,
+            !modal.completions.is_empty(),
         )
     };
 
     match mode_variant {
         "form" => {
             let focused = focused_field?;
-            match key.code {
-                KeyCode::Esc => Some(Action::CloseCreateSwap),
-                KeyCode::Up | KeyCode::Char('k')
-                    if matches!(
-                        focused,
-                        CreateSwapField::SizeUnit
-                            | CreateSwapField::ActivateAfter
-                            | CreateSwapField::Submit
-                    ) =>
-                {
-                    Some(Action::CreateSwapFocusField(focused.prev()))
-                }
-                KeyCode::Down | KeyCode::Char('j')
-                    if matches!(
-                        focused,
-                        CreateSwapField::SizeUnit
-                            | CreateSwapField::ActivateAfter
-                            | CreateSwapField::Submit
-                    ) =>
-                {
-                    Some(Action::CreateSwapFocusField(focused.next()))
-                }
-                KeyCode::Up => Some(Action::CreateSwapFocusField(focused.prev())),
-                KeyCode::Down => Some(Action::CreateSwapFocusField(focused.next())),
-                KeyCode::Char(' ') if focused == CreateSwapField::SizeUnit => {
-                    Some(Action::CreateSwapToggleUnit)
-                }
-                KeyCode::Char(' ') if focused == CreateSwapField::ActivateAfter => {
-                    Some(Action::CreateSwapToggleActivate)
-                }
-                KeyCode::Enter if focused == CreateSwapField::Submit => {
-                    validate_and_submit(state, &path_value, &size_value, &priority_value, size_unit)
-                }
-                _ => {
-                    if matches!(
-                        focused,
-                        CreateSwapField::Path | CreateSwapField::Size | CreateSwapField::Priority
-                    ) {
-                        Some(Action::CreateSwapInputEvent(crossterm::event::Event::Key(
+
+            // Completions popup is showing — intercept navigation keys
+            if completions_showing {
+                return match key.code {
+                    KeyCode::Down | KeyCode::Tab => Some(Action::CreateSwapCompletionMove(1)),
+                    KeyCode::Up => Some(Action::CreateSwapCompletionMove(-1)),
+                    KeyCode::Enter => Some(Action::CreateSwapApplyCompletion),
+                    KeyCode::Esc => Some(Action::CreateSwapClearCompletions),
+                    _ => {
+                        // Any other key: clear completions inline, then forward to normal handler
+                        {
+                            let mut s = state.lock().expect("state mutex poisoned");
+                            if let Some(m) = s.create_swap_modal.as_mut() {
+                                m.completions.clear();
+                                m.completion_sel = None;
+                            }
+                        }
+                        handle_form_key(
                             key,
-                        )))
-                    } else {
-                        None
+                            focused,
+                            state,
+                            &path_value,
+                            &size_value,
+                            &priority_value,
+                            size_unit,
+                        )
                     }
-                }
+                };
             }
+
+            // Tab on Path field triggers completion
+            if key.code == KeyCode::Tab && focused == CreateSwapField::Path {
+                let completions = compute_path_completions(&path_value);
+                return if completions.is_empty() {
+                    None
+                } else {
+                    Some(Action::CreateSwapSetCompletions(completions))
+                };
+            }
+
+            handle_form_key(
+                key,
+                focused,
+                state,
+                &path_value,
+                &size_value,
+                &priority_value,
+                size_unit,
+            )
         }
         "progress" => match key.code {
             KeyCode::Esc => {
@@ -269,6 +281,64 @@ fn handle_create_swap_key(key: KeyEvent, state: &Arc<Mutex<AppState>>) -> Option
             _ => None,
         },
         _ => None,
+    }
+}
+
+fn handle_form_key(
+    key: KeyEvent,
+    focused: crate::create_swap::CreateSwapField,
+    state: &Arc<Mutex<AppState>>,
+    path_value: &str,
+    size_value: &str,
+    priority_value: &str,
+    size_unit: crate::create_swap::SizeUnit,
+) -> Option<Action> {
+    use crate::create_swap::CreateSwapField;
+    match key.code {
+        KeyCode::Esc => Some(Action::CloseCreateSwap),
+        KeyCode::Up | KeyCode::Char('k')
+            if matches!(
+                focused,
+                CreateSwapField::SizeUnit
+                    | CreateSwapField::ActivateAfter
+                    | CreateSwapField::Submit
+            ) =>
+        {
+            Some(Action::CreateSwapFocusField(focused.prev()))
+        }
+        KeyCode::Down | KeyCode::Char('j')
+            if matches!(
+                focused,
+                CreateSwapField::SizeUnit
+                    | CreateSwapField::ActivateAfter
+                    | CreateSwapField::Submit
+            ) =>
+        {
+            Some(Action::CreateSwapFocusField(focused.next()))
+        }
+        KeyCode::Up => Some(Action::CreateSwapFocusField(focused.prev())),
+        KeyCode::Down => Some(Action::CreateSwapFocusField(focused.next())),
+        KeyCode::Char(' ') if focused == CreateSwapField::SizeUnit => {
+            Some(Action::CreateSwapToggleUnit)
+        }
+        KeyCode::Char(' ') if focused == CreateSwapField::ActivateAfter => {
+            Some(Action::CreateSwapToggleActivate)
+        }
+        KeyCode::Enter if focused == CreateSwapField::Submit => {
+            validate_and_submit(state, path_value, size_value, priority_value, size_unit)
+        }
+        _ => {
+            if matches!(
+                focused,
+                CreateSwapField::Path | CreateSwapField::Size | CreateSwapField::Priority
+            ) {
+                Some(Action::CreateSwapInputEvent(crossterm::event::Event::Key(
+                    key,
+                )))
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -317,6 +387,39 @@ fn validate_and_submit(
     Some(Action::CreateSwapSubmit {
         activate_only: false,
     })
+}
+
+fn compute_path_completions(partial: &str) -> Vec<String> {
+    let path = std::path::Path::new(partial);
+    let (dir, prefix) = if partial.ends_with('/') {
+        (path, "")
+    } else {
+        (
+            path.parent().unwrap_or(std::path::Path::new("/")),
+            path.file_name().and_then(|n| n.to_str()).unwrap_or(""),
+        )
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut results: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .map(|n| n.starts_with(prefix))
+                .unwrap_or(false)
+        })
+        .map(|e| {
+            let mut p = e.path().to_string_lossy().to_string();
+            if e.path().is_dir() {
+                p.push('/');
+            }
+            p
+        })
+        .collect();
+    results.sort();
+    results
 }
 
 pub fn next_sort_column(current: &SortColumn) -> SortColumn {
@@ -625,5 +728,36 @@ mod tests {
             &state,
         );
         assert!(action.is_none());
+    }
+
+    #[test]
+    fn completions_for_root_contains_entries() {
+        // /tmp always exists on Linux
+        let results = compute_path_completions("/tmp");
+        // Should find entries starting with /tmp
+        assert!(results.iter().all(|p| p.starts_with("/tmp")));
+    }
+
+    #[test]
+    fn completions_for_nonexistent_dir_returns_empty() {
+        let results = compute_path_completions("/definitely_not_a_real_path_xyz/");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn completions_for_slash_returns_root_entries() {
+        let results = compute_path_completions("/");
+        assert!(!results.is_empty());
+        assert!(results.iter().all(|p| p.starts_with('/')));
+    }
+
+    #[test]
+    fn completions_dirs_end_with_slash() {
+        let results = compute_path_completions("/");
+        let dirs: Vec<_> = results.iter().filter(|p| p.ends_with('/')).collect();
+        assert!(
+            !dirs.is_empty(),
+            "root should contain at least one directory"
+        );
     }
 }
