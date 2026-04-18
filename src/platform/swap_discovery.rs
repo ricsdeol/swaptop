@@ -1,10 +1,10 @@
-use std::path::Path;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 use crate::create_swap::detect_swap_magic;
 use crate::platform::{SwapDevice, SwapKind};
 
 /// Matches `name` against `pattern` containing at most one `*` wildcard.
-// Temporary: remove allow once discover_inactive_swap_files is added (Task 3)
 #[allow(dead_code)]
 fn matches_pattern(name: &str, pattern: &str) -> bool {
     match pattern.find('*') {
@@ -44,9 +44,42 @@ pub(crate) fn probe_swap_file(path: &Path) -> Option<SwapDevice> {
     })
 }
 
+// TODO(Task 4): wire into linux.rs; allow until then
+#[allow(dead_code)]
+pub(crate) fn discover_inactive_swap_files(
+    active_paths: &HashSet<PathBuf>,
+    dirs: &[(&str, &[&str])],
+) -> Vec<SwapDevice> {
+    let mut devices = Vec::new();
+    for &(dir, patterns) in dirs {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if active_paths.contains(&path) {
+                continue;
+            }
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n,
+                None => continue,
+            };
+            if patterns.iter().any(|p| matches_pattern(name, p))
+                && let Some(dev) = probe_swap_file(&path)
+            {
+                devices.push(dev);
+            }
+        }
+    }
+    devices
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
+    use std::path::PathBuf;
 
     #[test]
     fn matches_exact_name() {
@@ -149,5 +182,79 @@ mod tests {
         assert_eq!(dev.total, 4096);
 
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn discover_finds_swap_file_matching_pattern() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join("swaptop_discover_test");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let path = dir.join("swapfile1");
+        let mut buf = vec![0u8; 4096];
+        buf[4086..4096].copy_from_slice(b"SWAPSPACE2");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(&buf).unwrap();
+        drop(f);
+
+        let active = HashSet::new();
+        let dirs: &[(&str, &[&str])] = &[(dir.to_str().unwrap(), &["swap*"])];
+        let found = discover_inactive_swap_files(&active, dirs);
+
+        assert!(found.iter().any(|d| d.path == path));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn discover_skips_active_paths() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join("swaptop_discover_skip_test");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let path = dir.join("swapfile");
+        let mut buf = vec![0u8; 4096];
+        buf[4086..4096].copy_from_slice(b"SWAPSPACE2");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(&buf).unwrap();
+        drop(f);
+
+        let active: HashSet<PathBuf> = [path.clone()].into_iter().collect();
+        let dirs: &[(&str, &[&str])] = &[(dir.to_str().unwrap(), &["swap*"])];
+        let found = discover_inactive_swap_files(&active, dirs);
+
+        assert!(!found.iter().any(|d| d.path == path));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn discover_ignores_non_matching_files() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join("swaptop_discover_nomatch_test");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let path = dir.join("readme.txt");
+        let mut buf = vec![0u8; 4096];
+        buf[4086..4096].copy_from_slice(b"SWAPSPACE2");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(&buf).unwrap();
+        drop(f);
+
+        let active = HashSet::new();
+        let dirs: &[(&str, &[&str])] = &[(dir.to_str().unwrap(), &["swap*"])];
+        let found = discover_inactive_swap_files(&active, dirs);
+
+        assert!(found.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn discover_ignores_nonexistent_dir() {
+        let active = HashSet::new();
+        let dirs: &[(&str, &[&str])] = &[("/tmp/swaptop_nonexistent_dir_xyz", &["swap*"])];
+        let found = discover_inactive_swap_files(&active, dirs);
+        assert!(found.is_empty());
     }
 }
