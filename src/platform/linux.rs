@@ -202,7 +202,7 @@ fn probe_swap_device(path: &Path) -> Option<SwapDevice> {
     std::io::Read::read_exact(&mut f, &mut buf).ok()?;
     // `metadata().len()` returns 0 for block devices on Linux, so query the
     // real size via the BLKGETSIZE64 ioctl on the open fd.
-    let size = block_device_size(&f).unwrap_or(0);
+    let size = block_device_size(&f)?;
     detect_swap_magic(&buf, size)?;
     Some(SwapDevice {
         path: path.to_path_buf(),
