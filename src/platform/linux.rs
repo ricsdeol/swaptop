@@ -200,7 +200,9 @@ fn probe_swap_device(path: &Path) -> Option<SwapDevice> {
     let mut f = std::fs::File::open(path).ok()?;
     let mut buf = [0u8; 4096];
     std::io::Read::read_exact(&mut f, &mut buf).ok()?;
-    let size = std::fs::metadata(path).ok()?.len();
+    // `metadata().len()` returns 0 for block devices on Linux, so query the
+    // real size via the BLKGETSIZE64 ioctl on the open fd.
+    let size = block_device_size(&f).unwrap_or(0);
     detect_swap_magic(&buf, size)?;
     Some(SwapDevice {
         path: path.to_path_buf(),
@@ -210,6 +212,19 @@ fn probe_swap_device(path: &Path) -> Option<SwapDevice> {
         kind: SwapKind::Partition,
         active: false,
     })
+}
+
+/// Return the size in bytes of a block device via `BLKGETSIZE64`.
+fn block_device_size(file: &std::fs::File) -> Option<u64> {
+    use std::os::unix::io::AsRawFd;
+    // BLKGETSIZE64 = _IOR(0x12, 114, size_t) = 0x80081272 on Linux.
+    const BLKGETSIZE64: nix::libc::c_ulong = 0x8008_1272;
+    let fd = file.as_raw_fd();
+    let mut size: u64 = 0;
+    // SAFETY: `fd` is a valid open file descriptor for a block device;
+    // `size` is a valid mutable u64 pointer matching the ioctl's size_t out-param.
+    let ret = unsafe { nix::libc::ioctl(fd, BLKGETSIZE64, &mut size as *mut u64) };
+    if ret == 0 { Some(size) } else { None }
 }
 
 fn is_block_device(path: &Path) -> bool {

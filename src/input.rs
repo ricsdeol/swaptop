@@ -289,6 +289,11 @@ fn handle_create_swap_key(key: KeyEvent, state: &Arc<Mutex<AppState>>) -> Option
             )
         }
         "progress" => match key.code {
+            // TODO: disallow Esc once step 3 (file allocation) has started, to avoid
+            // leaving a partial pre-allocated file behind when the user cancels.
+            // Today, the background task keeps running after CloseCreateSwap and its
+            // StepUpdate actions are silently dropped, so the user has no indication
+            // that a partial file exists on disk.
             KeyCode::Esc => {
                 let return_to_form = {
                     let s = state.lock().expect("state mutex poisoned");
@@ -429,6 +434,10 @@ fn validate_and_submit(
 }
 
 fn compute_path_completions(partial: &str) -> Vec<String> {
+    // TODO: this runs std::fs::read_dir on the Tokio executor thread. Local
+    // filesystems are sub-millisecond, but network mounts (NFS/CIFS on /home)
+    // can block the event loop for hundreds of milliseconds. Move to
+    // spawn_blocking if slow filesystems are reported.
     let path = std::path::Path::new(partial);
     let (dir, prefix) = if partial.ends_with('/') {
         (path, "")

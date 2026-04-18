@@ -77,6 +77,7 @@ fn render_form(f: &mut Frame, area: Rect, modal: &CreateSwapModal, focused: Crea
     );
     let size_line = Line::from(vec![
         label_span("Size:    "),
+        Span::raw(" "),
         value_span(modal.size_input.value(), focused == CreateSwapField::Size),
         Span::raw(" "),
         unit_span(

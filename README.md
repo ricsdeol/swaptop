@@ -92,9 +92,11 @@ sudo ./swaptop
 | `4` | Go to Create Swap tab |
 | `Tab` | Next tab |
 | `Shift+Tab` | Previous tab |
-| `r` | Force immediate refresh |
 | `q` / `Q` | Quit |
 | `Ctrl+C` | Quit |
+
+> `r` is tab-specific: on Overview/Processes it forces an immediate refresh; on
+> Devices it triggers Reset on the selected device (see the Devices tab table).
 
 #### Processes tab
 

@@ -173,9 +173,11 @@ pub fn detect_fs_type(mounts_content: &str, target: &std::path::Path) -> Option<
     let mut best: Option<(usize, String)> = None;
     for line in mounts_content.lines() {
         let mut parts = line.split_whitespace();
-        let _dev = parts.next()?;
-        let mount_point = parts.next()?;
-        let fs_type = parts.next()?;
+        let (Some(_dev), Some(mount_point), Some(fs_type)) =
+            (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
         if target_str.starts_with(mount_point)
             && (target_str.len() == mount_point.len()
                 || target_str.as_bytes().get(mount_point.len()) == Some(&b'/')
@@ -192,8 +194,12 @@ pub fn detect_fs_type(mounts_content: &str, target: &std::path::Path) -> Option<
 
 /// Given the filesystem type, decide whether to use `fallocate` or `dd`.
 pub fn allocator_for_fs(fs_type: &str) -> Allocator {
+    // btrfs uses `dd` because `fallocate` produces preallocated extents that the
+    // kernel rejects for swap (swapon fails with EINVAL). The user must additionally
+    // disable COW on the target file (`chattr +C`) before running swaptop; we do not
+    // do that automatically because it only takes effect on empty files.
     match fs_type {
-        "ext2" | "ext3" | "ext4" | "xfs" | "f2fs" | "btrfs" => Allocator::Fallocate,
+        "ext2" | "ext3" | "ext4" | "xfs" | "f2fs" => Allocator::Fallocate,
         _ => Allocator::Dd,
     }
 }
@@ -592,7 +598,6 @@ tmpfs /home/user/ramdisk tmpfs rw 0 0
     fn allocator_for_fs_picks_fallocate_on_ext4() {
         assert_eq!(allocator_for_fs("ext4"), Allocator::Fallocate);
         assert_eq!(allocator_for_fs("xfs"), Allocator::Fallocate);
-        assert_eq!(allocator_for_fs("btrfs"), Allocator::Fallocate);
     }
 
     #[test]
@@ -600,5 +605,11 @@ tmpfs /home/user/ramdisk tmpfs rw 0 0
         assert_eq!(allocator_for_fs("tmpfs"), Allocator::Dd);
         assert_eq!(allocator_for_fs("ramfs"), Allocator::Dd);
         assert_eq!(allocator_for_fs("whatever"), Allocator::Dd);
+    }
+
+    #[test]
+    fn allocator_for_fs_uses_dd_on_btrfs() {
+        // fallocate on btrfs creates prealloc extents that swapon rejects.
+        assert_eq!(allocator_for_fs("btrfs"), Allocator::Dd);
     }
 }

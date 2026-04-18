@@ -15,7 +15,6 @@ pub enum Tab {
 
 #[derive(Debug, Clone)]
 pub struct ConfirmOffDelete {
-    #[allow(dead_code)] // read in ui/devices.rs (Task 6)
     pub path: PathBuf,
     pub delete_file: bool,
 }
@@ -322,20 +321,27 @@ impl AppState {
                 }
             }
 
-            Action::CreateSwapSubmit { activate_only: _ } => {
+            Action::CreateSwapSubmit { activate_only } => {
                 if let Some(modal) = self.create_swap_modal.as_mut() {
                     modal.validation_error = None;
-                    modal.mode = CreateSwapMode::Progress {
-                        steps: vec![
-                            CreateSwapStep::pending("Check disk space"),
-                            CreateSwapStep::pending("Check target file"),
-                            CreateSwapStep::pending("Detect filesystem"),
-                            CreateSwapStep::pending("Allocate file"),
-                            CreateSwapStep::pending("chmod 600"),
-                            CreateSwapStep::pending("mkswap"),
-                            CreateSwapStep::pending("swapon"),
-                        ],
-                    };
+                    let mut steps = vec![
+                        CreateSwapStep::pending("Check disk space"),
+                        CreateSwapStep::pending("Check target file"),
+                        CreateSwapStep::pending("Detect filesystem"),
+                        CreateSwapStep::pending("Allocate file"),
+                        CreateSwapStep::pending("chmod 600"),
+                        CreateSwapStep::pending("mkswap"),
+                        CreateSwapStep::pending("swapon"),
+                    ];
+                    if activate_only {
+                        // Background runner skips steps 0..=5 and only updates step 6.
+                        // Mark the skipped ones as Done so the UI doesn't show them
+                        // stuck on Pending for the lifetime of the operation.
+                        for step in steps.iter_mut().take(6) {
+                            step.status = crate::create_swap::StepStatus::Done;
+                        }
+                    }
+                    modal.mode = CreateSwapMode::Progress { steps };
                 }
             }
 

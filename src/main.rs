@@ -167,10 +167,13 @@ async fn run(
                                 let size_n: u64 = m.size_input.value().trim().parse().unwrap_or(0);
                                 let size_bytes = size_n * m.size_unit.multiplier();
                                 let prio_n: i32 = m.priority_input.value().trim().parse().unwrap_or(0);
+                                // Clamp to i16 range so out-of-range user input cannot
+                                // silently wrap into a nonsensical negative priority.
+                                let prio_i16 = prio_n.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
                                 (
                                     std::path::PathBuf::from(m.path_input.value()),
                                     size_bytes,
-                                    prio_n as i16,
+                                    prio_i16,
                                     m.activate_after,
                                 )
                             })

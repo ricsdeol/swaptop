@@ -9,7 +9,6 @@ use crate::platform::MemSnapshot;
 pub enum DeviceOpKind {
     On,
     Off,
-    #[allow(dead_code)]
     OffAndDelete,
     Reset,
 }
@@ -102,22 +101,15 @@ pub enum Action {
         status: StepStatus,
     },
 
-    // Phase 6 — path autocomplete (constructed in Task 3 key handler)
-    #[allow(dead_code)]
+    // Phase 6 — path autocomplete
     CreateSwapSetCompletions(Vec<String>),
-    #[allow(dead_code)]
     CreateSwapCompletionMove(i16),
-    #[allow(dead_code)]
     CreateSwapApplyCompletion,
-    #[allow(dead_code)]
     CreateSwapClearCompletions,
 
     // Phase 6 — delete file on swapoff
-    #[allow(dead_code)]
     RequestConfirmOffDelete,
-    #[allow(dead_code)]
     ToggleConfirmDeleteFile,
-    #[allow(dead_code)]
     CancelConfirmOffDelete,
 }
 
