@@ -1,4 +1,5 @@
 mod proc_reader;
+pub(crate) mod create_swap;
 
 use std::path::{Path, PathBuf};
 

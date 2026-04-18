@@ -22,7 +22,7 @@ mod ui;
 use actions::{Action, DeviceOp, DeviceOpKind, OpStatus};
 use app::{AppState, Tab};
 use collector::Collector;
-use create_swap::run_create_swap_steps;
+use platform::linux::create_swap::run_create_swap_steps;
 use platform::SwapBackend;
 use platform::linux::LinuxBackend;
 
