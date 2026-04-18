@@ -4,7 +4,9 @@ use color_eyre::Result;
 use sysinfo::System;
 
 use super::proc_reader::ProcReader;
+use super::swap_discovery::probe_swap_file;
 use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind};
+use crate::create_swap::detect_swap_magic;
 
 pub struct LinuxBackend {
     sys: System,
@@ -162,34 +164,7 @@ fn parse_swap_line(line: &str) -> Option<SwapDevice> {
     })
 }
 
-use crate::create_swap::detect_swap_magic;
-
 const WELL_KNOWN_SWAP_PATHS: &[&str] = &["/swapfile", "/var/swapfile", "/swap", "/swap.img"];
-
-/// Check if `path` is a regular file with swap magic header.
-/// Returns `None` silently on any I/O or permission error.
-fn probe_swap_file(path: &Path) -> Option<SwapDevice> {
-    let meta = std::fs::metadata(path).ok()?;
-    if !meta.is_file() {
-        return None;
-    }
-    let size = meta.len();
-    if size < 4096 {
-        return None;
-    }
-    let mut f = std::fs::File::open(path).ok()?;
-    let mut buf = [0u8; 4096];
-    std::io::Read::read_exact(&mut f, &mut buf).ok()?;
-    detect_swap_magic(&buf, size)?;
-    Some(SwapDevice {
-        path: path.to_path_buf(),
-        total: size,
-        used: 0,
-        priority: 0,
-        kind: SwapKind::File,
-        active: false,
-    })
-}
 
 /// Check if `path` is a block device with swap magic header.
 /// Returns `None` silently on any I/O or permission error.
@@ -301,69 +276,6 @@ mod tests {
         );
         let devices = parse_proc_swaps(&content);
         assert_eq!(devices.len(), 3);
-    }
-
-    #[test]
-    fn probe_swap_file_returns_none_for_nonexistent() {
-        let result = probe_swap_file(Path::new("/tmp/nonexistent_swap_probe_test_xyz"));
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn probe_swap_file_returns_none_for_non_swap() {
-        use std::io::Write;
-        let dir = std::env::temp_dir();
-        let path = dir.join("swaptop_test_non_swap");
-        let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(&[0u8; 4096]).unwrap();
-        drop(f);
-
-        let result = probe_swap_file(&path);
-        assert!(result.is_none());
-
-        std::fs::remove_file(&path).unwrap();
-    }
-
-    #[test]
-    fn probe_swap_file_returns_device_for_swap_magic() {
-        use std::io::Write;
-        let dir = std::env::temp_dir();
-        let path = dir.join("swaptop_test_swap_magic");
-        let mut buf = vec![0u8; 4096];
-        buf[4086..4096].copy_from_slice(b"SWAPSPACE2");
-        let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(&buf).unwrap();
-        drop(f);
-
-        let result = probe_swap_file(&path);
-        assert!(result.is_some());
-        let dev = result.unwrap();
-        assert_eq!(dev.path, path);
-        assert!(!dev.active);
-        assert!(matches!(dev.kind, SwapKind::File));
-        assert_eq!(dev.total, 4096);
-
-        std::fs::remove_file(&path).unwrap();
-    }
-
-    #[test]
-    fn discover_inactive_skips_active_paths() {
-        use std::collections::HashSet;
-
-        let active: HashSet<PathBuf> = [PathBuf::from("/swapfile")].into_iter().collect();
-
-        let mut found = Vec::new();
-        for candidate in WELL_KNOWN_SWAP_PATHS {
-            let path = PathBuf::from(candidate);
-            if active.contains(&path) {
-                continue;
-            }
-            if let Some(dev) = probe_swap_file(&path) {
-                found.push(dev);
-            }
-        }
-        // /swapfile should NOT appear because it's in the active set
-        assert!(!found.iter().any(|d| d.path == PathBuf::from("/swapfile")));
     }
 
     mod proptests {
