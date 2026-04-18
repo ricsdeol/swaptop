@@ -4,6 +4,7 @@ use crate::create_swap::detect_swap_magic;
 use crate::platform::{SwapDevice, SwapKind};
 
 /// Matches `name` against `pattern` containing at most one `*` wildcard.
+// Temporary: remove allow once discover_inactive_swap_files is added (Task 3)
 #[allow(dead_code)]
 fn matches_pattern(name: &str, pattern: &str) -> bool {
     match pattern.find('*') {
@@ -18,6 +19,8 @@ fn matches_pattern(name: &str, pattern: &str) -> bool {
     }
 }
 
+/// Check if `path` is a regular file with a valid swap magic header.
+/// Returns `None` silently on any I/O or permission error.
 pub(crate) fn probe_swap_file(path: &Path) -> Option<SwapDevice> {
     let meta = std::fs::metadata(path).ok()?;
     if !meta.is_file() {
@@ -97,6 +100,18 @@ mod tests {
     fn probe_returns_none_for_nonexistent() {
         let result = probe_swap_file(Path::new("/tmp/nonexistent_swap_probe_test_xyz"));
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn probe_returns_none_for_small_file() {
+        use std::io::Write;
+        let dir = std::env::temp_dir();
+        let path = dir.join("swaptop_discovery_test_small");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(&[0u8; 512]).unwrap();
+        drop(f);
+        assert!(probe_swap_file(&path).is_none());
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]
