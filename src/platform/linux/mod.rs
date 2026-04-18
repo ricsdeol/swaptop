@@ -1,9 +1,11 @@
+mod proc_reader;
+
 use std::path::{Path, PathBuf};
 
 use color_eyre::Result;
 use sysinfo::System;
 
-use super::proc_reader::ProcReader;
+use proc_reader::ProcReader;
 use super::swap_discovery::discover_inactive_swap_files;
 use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind, parse_swap_header};
 
