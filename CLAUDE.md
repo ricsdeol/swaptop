@@ -28,11 +28,12 @@ Five arms via `tokio::select!`: **shutdown** (CancellationToken); **action_rx** 
 `collector.rs` only touches `Box<dyn SwapBackend>` — never imports platform modules directly.
 
 - `mod.rs` — `SwapBackend` trait + `Capabilities`
-- `types.rs` — shared structs (`SwapInfo`, `SwapDevice`, `ProcessRow`, `MemSnapshot`, …)
+- `types.rs` — shared structs (`SwapInfo`, `SwapDevice`, `ProcessRow`, `MemSnapshot`, …) + `parse_swap_header`
 - `factory.rs` — `detect() -> Box<dyn SwapBackend>` via `#[cfg(target_os)]`
-- `linux.rs` — primary impl: sysinfo + `/proc/swaps` + `/proc/PID/smaps` + `nix::mount`
-- `proc_reader.rs` — low-level `/proc` parsing helpers
-- `swap_discovery.rs` — glob-based swap file discovery
+- `linux/mod.rs` — primary impl: sysinfo + `/proc/swaps` + `/proc/PID/smaps` + `nix::mount`
+- `linux/proc_reader.rs` — low-level `/proc` parsing helpers
+- `linux/create_swap.rs` — background step runner: fallocate → chmod → mkswap → swapon
+- `swap_discovery.rs` — glob-based swap file discovery (cross-platform)
 - `macos.rs`, `windows.rs`, `bsd.rs` — stubs
 
 ### State (`app.rs`)
@@ -44,7 +45,7 @@ Five arms via `tokio::select!`: **shutdown** (CancellationToken); **action_rx** 
 - `actions.rs` — `Action` enum (all state mutations) + `SortColumn`, `DeviceOp`, `OpStatus`
 - `input.rs` — `resolve_key()`: maps crossterm key events + `KeyContext` → `Option<Action>`
 - `tui.rs` — terminal init/restore helpers
-- `create_swap.rs` (`src/`) — wizard step runner (`run_create_swap_steps`): fallocate → chmod → mkswap → swapon, sends progress `Action`s over `mpsc`
+- `create_swap.rs` (`src/`) — wizard state types (`CreateSwapModal`, `CreateSwapField`, `StepStatus`, etc.)
 
 ### UI (`src/ui/`)
 
