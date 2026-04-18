@@ -5,7 +5,6 @@ use crate::create_swap::detect_swap_magic;
 use crate::platform::{SwapDevice, SwapKind};
 
 /// Matches `name` against `pattern` containing at most one `*` wildcard.
-#[allow(dead_code)]
 fn matches_pattern(name: &str, pattern: &str) -> bool {
     match pattern.find('*') {
         None => name == pattern,
@@ -44,8 +43,6 @@ pub(crate) fn probe_swap_file(path: &Path) -> Option<SwapDevice> {
     })
 }
 
-// TODO(Task 4): wire into linux.rs; allow until then
-#[allow(dead_code)]
 pub(crate) fn discover_inactive_swap_files(
     active_paths: &HashSet<PathBuf>,
     dirs: &[(&str, &[&str])],

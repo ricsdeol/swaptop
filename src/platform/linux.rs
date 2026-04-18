@@ -50,7 +50,10 @@ impl SwapBackend for LinuxBackend {
 
         let active_paths: std::collections::HashSet<PathBuf> = devices
             .iter()
-            .map(|d| std::fs::canonicalize(&d.path).unwrap_or_else(|_| d.path.clone()))
+            .flat_map(|d| {
+                let canonical = std::fs::canonicalize(&d.path).ok();
+                std::iter::once(d.path.clone()).chain(canonical)
+            })
             .collect();
 
         devices.extend(discover_inactive_swap_files(&active_paths, LINUX_SCAN_DIRS));
