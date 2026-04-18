@@ -1,5 +1,6 @@
+/// Matches `name` against `pattern` containing at most one `*` wildcard.
 #[allow(dead_code)]
-pub(crate) fn matches_pattern(name: &str, pattern: &str) -> bool {
+fn matches_pattern(name: &str, pattern: &str) -> bool {
     match pattern.find('*') {
         None => name == pattern,
         Some(i) => {
