@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crate::create_swap::detect_swap_magic;
+use super::parse_swap_header;
 use crate::platform::{SwapDevice, SwapKind};
 
 /// Matches `name` against `pattern` containing at most one `*` wildcard.
@@ -32,7 +32,7 @@ pub(crate) fn probe_swap_file(path: &Path) -> Option<SwapDevice> {
     let mut f = std::fs::File::open(path).ok()?;
     let mut buf = [0u8; 4096];
     std::io::Read::read_exact(&mut f, &mut buf).ok()?;
-    detect_swap_magic(&buf, size)?;
+    parse_swap_header(&buf, size)?;
     Some(SwapDevice {
         path: path.to_path_buf(),
         total: size,

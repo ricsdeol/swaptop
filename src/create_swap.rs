@@ -6,6 +6,14 @@
 
 use std::path::PathBuf;
 
+use crate::platform::parse_swap_header;
+
+// ── Note on Module Separation ──────────────────────────────────────────────────
+// parse_swap_header is imported here for use in check_target_file() during
+// the wizard's file inspection. This keeps the function close to where it's
+// used while allowing platform/ to expose swap detection logic without depending
+// on create_swap.rs.
+
 /// Operating mode of the create-swap modal.
 #[derive(Debug)]
 pub enum CreateSwapMode {
@@ -148,22 +156,6 @@ impl Default for CreateSwapModal {
 }
 
 // ── Pure helper functions ─────────────────────────────────────────────────────
-
-/// Swap header magic lives at bytes 4086..4096 of the first page.
-///
-/// Returns `Some(size_bytes)` if `buf` is ≥4096 bytes AND the magic matches.
-/// `size_bytes` is supplied by the caller (from `fs::metadata().len()`).
-pub fn detect_swap_magic(buf: &[u8], size_bytes: u64) -> Option<u64> {
-    if buf.len() < 4096 {
-        return None;
-    }
-    let magic = &buf[4086..4096];
-    if magic == b"SWAPSPACE2" || magic == b"SWAP-SPACE" {
-        Some(size_bytes)
-    } else {
-        None
-    }
-}
 
 /// Parse `/proc/mounts` content and return the filesystem type covering `target`.
 ///
@@ -392,7 +384,7 @@ fn check_target_file(path: &std::path::Path) -> TargetFileCheck {
     let mut buf = vec![0u8; 4096];
     match f.read_exact(&mut buf) {
         Ok(()) => {
-            if let Some(size) = detect_swap_magic(&buf, size) {
+            if let Some(size) = parse_swap_header(&buf, size) {
                 TargetFileCheck::AlreadySwap { size }
             } else {
                 TargetFileCheck::ExistsNotSwap
@@ -538,32 +530,6 @@ mod tests {
         let s = CreateSwapStep::pending("Check disk space");
         assert_eq!(s.label, "Check disk space");
         assert_eq!(s.status, StepStatus::Pending);
-    }
-
-    #[test]
-    fn detect_swap_magic_returns_size_on_swapspace2() {
-        let mut buf = vec![0u8; 4096];
-        buf[4086..4096].copy_from_slice(b"SWAPSPACE2");
-        assert_eq!(detect_swap_magic(&buf, 2_147_483_648), Some(2_147_483_648));
-    }
-
-    #[test]
-    fn detect_swap_magic_returns_size_on_swap_space() {
-        let mut buf = vec![0u8; 4096];
-        buf[4086..4096].copy_from_slice(b"SWAP-SPACE");
-        assert_eq!(detect_swap_magic(&buf, 1024), Some(1024));
-    }
-
-    #[test]
-    fn detect_swap_magic_returns_none_on_unknown_bytes() {
-        let buf = vec![0u8; 4096];
-        assert_eq!(detect_swap_magic(&buf, 4096), None);
-    }
-
-    #[test]
-    fn detect_swap_magic_returns_none_on_short_buffer() {
-        let buf = vec![0u8; 100];
-        assert_eq!(detect_swap_magic(&buf, 100), None);
     }
 
     #[test]
