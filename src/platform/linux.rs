@@ -4,9 +4,15 @@ use color_eyre::Result;
 use sysinfo::System;
 
 use super::proc_reader::ProcReader;
-use super::swap_discovery::probe_swap_file;
+use super::swap_discovery::discover_inactive_swap_files;
 use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind};
 use crate::create_swap::detect_swap_magic;
+
+const LINUX_SCAN_DIRS: &[(&str, &[&str])] = &[
+    ("/", &["swap*", "*.swap", "*.img"]),
+    ("/var", &["swap*", "*.swap"]),
+    ("/mnt", &["swap*", "*.swap"]),
+];
 
 pub struct LinuxBackend {
     sys: System,
@@ -42,19 +48,12 @@ impl SwapBackend for LinuxBackend {
         let content = std::fs::read_to_string("/proc/swaps")?;
         let mut devices = parse_proc_swaps(&content);
 
-        let active_paths: std::collections::HashSet<PathBuf> =
-            devices.iter().map(|d| d.path.clone()).collect();
+        let active_paths: std::collections::HashSet<PathBuf> = devices
+            .iter()
+            .map(|d| std::fs::canonicalize(&d.path).unwrap_or_else(|_| d.path.clone()))
+            .collect();
 
-        // Probe well-known file paths for inactive swap files
-        for candidate in WELL_KNOWN_SWAP_PATHS {
-            let path = PathBuf::from(candidate);
-            if active_paths.contains(&path) {
-                continue;
-            }
-            if let Some(dev) = probe_swap_file(&path) {
-                devices.push(dev);
-            }
-        }
+        devices.extend(discover_inactive_swap_files(&active_paths, LINUX_SCAN_DIRS));
 
         // Probe block devices in /dev/ for inactive swap partitions
         if let Ok(entries) = std::fs::read_dir("/dev/") {
@@ -163,8 +162,6 @@ fn parse_swap_line(line: &str) -> Option<SwapDevice> {
         active: true,
     })
 }
-
-const WELL_KNOWN_SWAP_PATHS: &[&str] = &["/swapfile", "/var/swapfile", "/swap", "/swap.img"];
 
 /// Check if `path` is a block device with swap magic header.
 /// Returns `None` silently on any I/O or permission error.
