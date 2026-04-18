@@ -1,14 +1,16 @@
-mod proc_reader;
 pub(crate) mod create_swap;
+mod proc_reader;
 
 use std::path::{Path, PathBuf};
 
 use color_eyre::Result;
 use sysinfo::System;
 
-use proc_reader::ProcReader;
 use super::swap_discovery::discover_inactive_swap_files;
-use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind, parse_swap_header};
+use super::{
+    Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind, parse_swap_header,
+};
+use proc_reader::ProcReader;
 
 const LINUX_SCAN_DIRS: &[(&str, &[&str])] = &[
     ("/", &["swap*", "*.swap", "*.img"]),

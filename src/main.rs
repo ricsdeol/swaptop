@@ -22,9 +22,9 @@ mod ui;
 use actions::{Action, DeviceOp, DeviceOpKind, OpStatus};
 use app::{AppState, Tab};
 use collector::Collector;
-use platform::linux::create_swap::run_create_swap_steps;
 use platform::SwapBackend;
 use platform::linux::LinuxBackend;
+use platform::linux::create_swap::run_create_swap_steps;
 
 #[tokio::main]
 async fn main() -> Result<()> {
