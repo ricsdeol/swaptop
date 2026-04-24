@@ -35,7 +35,7 @@ and the keybinding status bar at the bottom.*
 | ✅ | `swapon` / `swapoff` device management (requires root) |
 | ✅ | Confirmation modal for destructive device operations |
 | 🔜 | Process detail view with history chart and kill action |
-| 🔜 | Create swap file wizard (`fallocate → chmod → mkswap → swapon`) |
+| ✅ | Create swap file wizard (`fallocate → chmod → mkswap → swapon`) |
 
 ---
 
