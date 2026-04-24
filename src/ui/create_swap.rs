@@ -293,7 +293,7 @@ fn render_confirm_activate(f: &mut Frame, area: Rect, path: &std::path::Path, si
         Line::from(vec![
             Span::raw("  "),
             Span::styled(
-                " s ",
+                " c ",
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::Cyan)

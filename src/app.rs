@@ -17,6 +17,7 @@ pub enum Tab {
 pub struct ConfirmOffDelete {
     pub path: PathBuf,
     pub delete_file: bool,
+    pub active: bool,
 }
 
 pub struct AppState {
@@ -177,8 +178,6 @@ impl AppState {
                     self.error_msg = None;
                 }
             }
-
-            Action::Refresh => {} // collector tick handles it
 
             Action::SetError(msg) => {
                 self.error_msg = Some((msg, Instant::now()));
@@ -403,6 +402,7 @@ impl AppState {
                     self.confirm_off_delete = Some(ConfirmOffDelete {
                         path: dev.path.clone(),
                         delete_file: false,
+                        active: dev.active,
                     });
                 }
             }
@@ -1087,6 +1087,40 @@ mod tests {
         let modal = state.confirm_off_delete.as_ref().unwrap();
         assert_eq!(modal.path, PathBuf::from("/swapfile"));
         assert!(!modal.delete_file);
+    }
+
+    #[test]
+    fn request_confirm_off_delete_captures_active_true() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: true,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        assert!(state.confirm_off_delete.as_ref().unwrap().active);
+    }
+
+    #[test]
+    fn request_confirm_off_delete_captures_active_false() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: false,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        assert!(!state.confirm_off_delete.as_ref().unwrap().active);
     }
 
     #[test]

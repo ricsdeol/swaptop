@@ -10,6 +10,7 @@ pub enum DeviceOpKind {
     On,
     Off,
     OffAndDelete,
+    DeleteOnly,
     Reset,
 }
 
@@ -52,7 +53,6 @@ pub enum SortDir {
 pub enum Action {
     // Global
     Quit,
-    Refresh,
     NextTab,
     PrevTab,
     SelectTab(usize),

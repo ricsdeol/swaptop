@@ -13,7 +13,6 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
         ("q", "quit"),
         ("Tab", "next tab"),
         ("1-4", "switch tab"),
-        ("r", "refresh"),
         ("?", "help"),
     ];
 

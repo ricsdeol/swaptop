@@ -69,7 +69,6 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext<'_>) -> Option<Action> {
                 return Some(Action::SortBy(next_sort_column(sort_col)));
             }
             KeyCode::Char('/') => return Some(Action::EnterFilterMode),
-            KeyCode::Char('r') => return Some(Action::Refresh),
             _ => {}
         },
         Tab::Devices => {
@@ -81,11 +80,7 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext<'_>) -> Option<Action> {
                 state,
             );
         }
-        _ => {
-            if let KeyCode::Char('r') = key.code {
-                return Some(Action::Refresh);
-            }
-        }
+        _ => {}
     }
 
     None
@@ -107,16 +102,16 @@ fn handle_devices_key(
         if off_delete_open {
             return match code {
                 KeyCode::Char(' ') => Some(Action::ToggleConfirmDeleteFile),
-                KeyCode::Char('s') | KeyCode::Enter => {
-                    let (path, delete_file) = {
+                KeyCode::Char('c') | KeyCode::Enter => {
+                    let (path, delete_file, active) = {
                         let s = state.lock().expect("state mutex poisoned");
                         let modal = s.confirm_off_delete.as_ref()?;
-                        (modal.path.clone(), modal.delete_file)
+                        (modal.path.clone(), modal.delete_file, modal.active)
                     };
-                    let kind = if delete_file {
-                        DeviceOpKind::OffAndDelete
-                    } else {
-                        DeviceOpKind::Off
+                    let kind = match (delete_file, active) {
+                        (false, _) => DeviceOpKind::Off,
+                        (true, false) => DeviceOpKind::DeleteOnly,
+                        (true, true) => DeviceOpKind::OffAndDelete,
                     };
                     Some(Action::ExecuteDeviceOp { path, kind })
                 }
@@ -129,7 +124,7 @@ fn handle_devices_key(
     if let Some(kind) = confirm_action {
         // Modal is open — only 's'/Enter and Esc are active
         return match code {
-            KeyCode::Char('s') | KeyCode::Enter => {
+            KeyCode::Char('c') | KeyCode::Enter => {
                 let path = state
                     .lock()
                     .expect("state mutex poisoned")
@@ -152,23 +147,47 @@ fn handle_devices_key(
         KeyCode::Char('k') | KeyCode::Up => Some(Action::DeviceUp),
         KeyCode::Char('r') if has_devices => {
             if nix::unistd::geteuid().is_root() {
-                Some(Action::RequestConfirm(DeviceOpKind::Reset))
+                let is_active = {
+                    let s = state.lock().expect("state mutex poisoned");
+                    s.devices
+                        .get(selected_dev)
+                        .map(|d| d.active)
+                        .unwrap_or(false)
+                };
+                if is_active {
+                    Some(Action::RequestConfirm(DeviceOpKind::Reset))
+                } else {
+                    Some(Action::SetError(
+                        "Swap is not active — activate it first".to_string(),
+                    ))
+                }
             } else {
                 Some(Action::SetError(
                     "Requires root — run: sudo swaptop".to_string(),
                 ))
             }
         }
-        KeyCode::Char('o') if has_devices => {
+        KeyCode::Char('a') if has_devices => {
             if nix::unistd::geteuid().is_root() {
-                Some(Action::RequestConfirm(DeviceOpKind::On))
+                let is_active = {
+                    let s = state.lock().expect("state mutex poisoned");
+                    s.devices
+                        .get(selected_dev)
+                        .map(|d| d.active)
+                        .unwrap_or(false)
+                };
+                if is_active {
+                    Some(Action::SetError("Swap is already active".to_string()))
+                } else {
+                    Some(Action::RequestConfirm(DeviceOpKind::On))
+                }
             } else {
                 Some(Action::SetError(
                     "Requires root — run: sudo swaptop".to_string(),
                 ))
             }
         }
-        KeyCode::Char('f') if has_devices => {
+        KeyCode::Char('d') if has_devices => {
             if nix::unistd::geteuid().is_root() {
                 let is_file_type = {
                     let s = state.lock().expect("state mutex poisoned");
@@ -318,7 +337,7 @@ fn handle_create_swap_key(key: KeyEvent, state: &Arc<Mutex<AppState>>) -> Option
             _ => None,
         },
         "confirm_activate" => match key.code {
-            KeyCode::Char('s') | KeyCode::Enter => Some(Action::CreateSwapSubmit {
+            KeyCode::Char('c') | KeyCode::Enter => Some(Action::CreateSwapSubmit {
                 activate_only: true,
             }),
             KeyCode::Esc => Some(Action::CloseCreateSwap),
@@ -746,20 +765,96 @@ mod tests {
         assert!(matches!(action, Some(Action::EnterFilterMode)));
     }
 
-    #[test]
-    fn refresh_key_works_on_overview_tab() {
+    // ── ConfirmOffDelete kind selection ──────────────────────────────────
+
+    fn make_off_delete_state(active: bool, delete_file: bool) -> Arc<Mutex<AppState>> {
+        use crate::app::ConfirmOffDelete;
         let state = make_state();
+        {
+            let mut s = state.lock().unwrap();
+            s.confirm_off_delete = Some(ConfirmOffDelete {
+                path: "/swapfile".into(),
+                delete_file,
+                active,
+            });
+        }
+        state
+    }
+
+    #[test]
+    fn off_delete_inactive_delete_true_dispatches_delete_only() {
+        let state = make_off_delete_state(false, true);
         let action = rk(
-            key(KeyCode::Char('r')),
-            &Tab::Overview,
+            key(KeyCode::Char('c')),
+            &Tab::Devices,
             None,
             0,
-            false,
+            true,
             false,
             &SortColumn::Swap,
             &state,
         );
-        assert!(matches!(action, Some(Action::Refresh)));
+        assert!(
+            matches!(action, Some(Action::ExecuteDeviceOp { ref kind, .. }) if *kind == DeviceOpKind::DeleteOnly),
+            "expected DeleteOnly, got {action:?}"
+        );
+    }
+
+    #[test]
+    fn off_delete_active_delete_true_dispatches_off_and_delete() {
+        let state = make_off_delete_state(true, true);
+        let action = rk(
+            key(KeyCode::Char('c')),
+            &Tab::Devices,
+            None,
+            0,
+            true,
+            false,
+            &SortColumn::Swap,
+            &state,
+        );
+        assert!(
+            matches!(action, Some(Action::ExecuteDeviceOp { ref kind, .. }) if *kind == DeviceOpKind::OffAndDelete),
+            "expected OffAndDelete, got {action:?}"
+        );
+    }
+
+    #[test]
+    fn off_delete_active_delete_false_dispatches_off() {
+        let state = make_off_delete_state(true, false);
+        let action = rk(
+            key(KeyCode::Char('c')),
+            &Tab::Devices,
+            None,
+            0,
+            true,
+            false,
+            &SortColumn::Swap,
+            &state,
+        );
+        assert!(
+            matches!(action, Some(Action::ExecuteDeviceOp { ref kind, .. }) if *kind == DeviceOpKind::Off),
+            "expected Off, got {action:?}"
+        );
+    }
+
+    #[test]
+    fn off_delete_inactive_delete_false_dispatches_off() {
+        let state = make_off_delete_state(false, false);
+        let action = rk(
+            key(KeyCode::Char('c')),
+            &Tab::Devices,
+            None,
+            0,
+            true,
+            false,
+            &SortColumn::Swap,
+            &state,
+        );
+        assert!(
+            matches!(action, Some(Action::ExecuteDeviceOp { ref kind, .. }) if *kind == DeviceOpKind::Off),
+            "expected Off, got {action:?}"
+        );
     }
 
     #[test]

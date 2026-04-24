@@ -165,9 +165,9 @@ fn column_widths() -> Vec<Constraint> {
 
 fn render_footer(f: &mut Frame, area: Rect, state: &AppState) {
     let hint_line = Line::from(vec![
-        key_span("o"),
+        key_span("a"),
         desc_span(" activate  "),
-        key_span("f"),
+        key_span("d"),
         desc_span(" deactivate  "),
         key_span("r"),
         desc_span(" reset  "),
@@ -218,6 +218,7 @@ fn render_modal(f: &mut Frame, area: Rect, state: &AppState) {
         DeviceOpKind::On => "Activate",
         DeviceOpKind::Off => "Deactivate",
         DeviceOpKind::OffAndDelete => "Deactivate & Delete",
+        DeviceOpKind::DeleteOnly => "Delete File",
         DeviceOpKind::Reset => "Reset",
     };
 
@@ -238,7 +239,7 @@ fn render_modal(f: &mut Frame, area: Rect, state: &AppState) {
         Line::from(""),
         Line::from(vec![
             Span::raw("  "),
-            key_span("s"),
+            key_span("c"),
             desc_span(" confirm    "),
             key_span("Esc"),
             desc_span(" cancel"),
@@ -312,7 +313,7 @@ fn render_off_delete_modal(f: &mut Frame, area: Rect, state: &AppState) {
             Span::raw("  "),
             key_span("Space"),
             desc_span(" toggle    "),
-            key_span("s"),
+            key_span("c"),
             desc_span(" confirm    "),
             key_span("Esc"),
             desc_span(" cancel"),

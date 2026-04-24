@@ -149,6 +149,11 @@ async fn run(
                                         })
                                     })
                                 }
+                                DeviceOpKind::DeleteOnly => {
+                                    std::fs::remove_file(&path).map_err(|e| {
+                                        color_eyre::eyre::eyre!("delete failed: {e}")
+                                    })
+                                }
                                 DeviceOpKind::Reset       => backend.swap_reset(&path),
                             };
                             let status = match result {
