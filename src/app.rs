@@ -288,6 +288,8 @@ impl AppState {
                 if let Some(modal) = self.create_swap_modal.as_mut()
                     && let CreateSwapMode::Form { focused_field } = &mut modal.mode
                 {
+                    modal.completions.clear();
+                    modal.completion_sel = None;
                     *focused_field = field;
                 }
             }
@@ -296,6 +298,8 @@ impl AppState {
                 if let Some(modal) = self.create_swap_modal.as_mut()
                     && let CreateSwapMode::Form { focused_field } = modal.mode
                 {
+                    modal.completions.clear();
+                    modal.completion_sel = None;
                     use tui_input::backend::crossterm::EventHandler;
                     let target = match focused_field {
                         crate::create_swap::CreateSwapField::Path => Some(&mut modal.path_input),
@@ -313,18 +317,61 @@ impl AppState {
 
             Action::CreateSwapToggleUnit => {
                 if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.completions.clear();
+                    modal.completion_sel = None;
                     modal.size_unit = modal.size_unit.toggled();
                 }
             }
 
             Action::CreateSwapToggleActivate => {
                 if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.completions.clear();
+                    modal.completion_sel = None;
                     modal.activate_after = !modal.activate_after;
                 }
             }
 
             Action::CreateSwapSubmit { activate_only } => {
                 if let Some(modal) = self.create_swap_modal.as_mut() {
+                    if !activate_only {
+                        let path = modal.path_input.value().trim().to_string();
+                        if path.is_empty() {
+                            modal.validation_error = Some("Path is required".to_string());
+                            return;
+                        }
+                        if !std::path::Path::new(&path).is_absolute() {
+                            modal.validation_error = Some("Path must be absolute".to_string());
+                            return;
+                        }
+                        let size_n: u64 = match modal.size_input.value().trim().parse() {
+                            Ok(n) => n,
+                            Err(_) => {
+                                modal.validation_error =
+                                    Some("Size must be a positive integer".to_string());
+                                return;
+                            }
+                        };
+                        if size_n == 0 {
+                            modal.validation_error =
+                                Some("Size must be greater than zero".to_string());
+                            return;
+                        }
+                        let prio_n: i32 = match modal.priority_input.value().trim().parse() {
+                            Ok(n) => n,
+                            Err(_) => {
+                                modal.validation_error = Some(
+                                    "Priority must be an integer between -1 and 32767".to_string(),
+                                );
+                                return;
+                            }
+                        };
+                        if !(-1..=32767).contains(&prio_n) {
+                            modal.validation_error = Some(
+                                "Priority must be an integer between -1 and 32767".to_string(),
+                            );
+                            return;
+                        }
+                    }
                     modal.validation_error = None;
                     let mut steps = vec![
                         CreateSwapStep::pending("Check disk space"),
@@ -336,9 +383,6 @@ impl AppState {
                         CreateSwapStep::pending("swapon"),
                     ];
                     if activate_only {
-                        // Background runner skips steps 0..=5 and only updates step 6.
-                        // Mark the skipped ones as Done so the UI doesn't show them
-                        // stuck on Pending for the lifetime of the operation.
                         for step in steps.iter_mut().take(6) {
                             step.status = crate::create_swap::StepStatus::Done;
                         }
@@ -868,8 +912,10 @@ mod tests {
     #[test]
     fn submit_transitions_to_progress_with_seven_steps() {
         use crate::create_swap::CreateSwapMode;
+        use tui_input::Input;
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("/swapfile");
         state.handle_action(Action::CreateSwapSubmit {
             activate_only: false,
         });
@@ -883,8 +929,10 @@ mod tests {
     #[test]
     fn step_update_replaces_status_at_index() {
         use crate::create_swap::{CreateSwapMode, StepStatus};
+        use tui_input::Input;
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("/swapfile");
         state.handle_action(Action::CreateSwapSubmit {
             activate_only: false,
         });
@@ -904,10 +952,12 @@ mod tests {
     #[test]
     fn return_to_form_preserves_inputs_and_validation_error() {
         use crate::create_swap::{CreateSwapField, CreateSwapMode};
+        use tui_input::Input;
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::OpenCreateSwap);
         {
             let modal = state.create_swap_modal.as_mut().unwrap();
+            modal.path_input = Input::from("/swapfile");
             modal.validation_error = Some("some prior error".to_string());
         }
         state.handle_action(Action::CreateSwapSubmit {
@@ -1173,5 +1223,149 @@ mod tests {
         assert!(state.confirm_off_delete.is_some());
         state.handle_action(Action::CancelConfirmOffDelete);
         assert!(state.confirm_off_delete.is_none());
+    }
+
+    // ── Validation tests (Task 4) ────────────────────────────────────────────
+
+    #[test]
+    fn create_swap_submit_rejects_empty_path() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert!(modal.validation_error.is_some());
+        assert!(matches!(modal.mode, CreateSwapMode::Form { .. }));
+    }
+
+    #[test]
+    fn create_swap_submit_rejects_relative_path() {
+        use tui_input::Input;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("relative/path");
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert_eq!(
+            modal.validation_error.as_deref(),
+            Some("Path must be absolute")
+        );
+    }
+
+    #[test]
+    fn create_swap_submit_rejects_zero_size() {
+        use tui_input::Input;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("/swapfile");
+        state.create_swap_modal.as_mut().unwrap().size_input = Input::from("0");
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        assert_eq!(
+            state
+                .create_swap_modal
+                .as_ref()
+                .unwrap()
+                .validation_error
+                .as_deref(),
+            Some("Size must be greater than zero")
+        );
+    }
+
+    #[test]
+    fn create_swap_submit_rejects_non_numeric_size() {
+        use tui_input::Input;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("/swapfile");
+        state.create_swap_modal.as_mut().unwrap().size_input = Input::from("abc");
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        assert_eq!(
+            state
+                .create_swap_modal
+                .as_ref()
+                .unwrap()
+                .validation_error
+                .as_deref(),
+            Some("Size must be a positive integer")
+        );
+    }
+
+    #[test]
+    fn create_swap_submit_rejects_out_of_range_priority() {
+        use tui_input::Input;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("/swapfile");
+        state.create_swap_modal.as_mut().unwrap().priority_input = Input::from("99999");
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        assert!(
+            state
+                .create_swap_modal
+                .as_ref()
+                .unwrap()
+                .validation_error
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn create_swap_submit_valid_transitions_to_progress() {
+        use tui_input::Input;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("/swapfile");
+        state.create_swap_modal.as_mut().unwrap().size_input = Input::from("2");
+        state.create_swap_modal.as_mut().unwrap().priority_input = Input::from("0");
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert!(modal.validation_error.is_none());
+        assert!(matches!(modal.mode, CreateSwapMode::Progress { .. }));
+    }
+
+    #[test]
+    fn create_swap_submit_activate_only_skips_validation() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: true,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert!(modal.validation_error.is_none());
+        assert!(matches!(modal.mode, CreateSwapMode::Progress { .. }));
+    }
+
+    // ── Auto-clear completions (Task 5) ──────────────────────────────────────
+
+    #[test]
+    fn form_input_event_clears_completions() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![
+            "/a".to_string(),
+            "/b".to_string(),
+        ]));
+        assert!(
+            !state
+                .create_swap_modal
+                .as_ref()
+                .unwrap()
+                .completions
+                .is_empty()
+        );
+        state.handle_action(Action::CreateSwapToggleUnit);
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert!(modal.completions.is_empty());
+        assert_eq!(modal.completion_sel, None);
     }
 }

@@ -22,6 +22,7 @@ mod ui;
 use actions::{Action, DeviceOp, DeviceOpKind, OpStatus};
 use app::{AppState, Tab};
 use collector::Collector;
+use create_swap::CreateSwapMode;
 use platform::SwapBackend;
 use platform::linux::LinuxBackend;
 use platform::linux::create_swap::run_create_swap_steps;
@@ -106,40 +107,33 @@ async fn run(
 
             Some(Ok(event)) = events.next().fuse() => {
                 if let CrosstermEvent::Key(key) = event {
-                    // Read tab-relevant state before dropping the lock
-                    let (active_tab, confirm_action, selected_dev, has_devices,
-                         filter_mode, sort_col) = {
+                    let ctx = {
                         let s = state.lock().expect("state mutex poisoned");
-                        (
-                            s.active_tab.clone(),
-                            s.confirm_action.clone(),
-                            s.selected_dev,
-                            !s.devices.is_empty(),
-                            s.filter_mode,
-                            s.sort_col,
-                        )
+                        input::KeyContext::from_state(&s)
                     };
 
-                    let action = input::resolve_key(key, &input::KeyContext {
-                        active_tab:     &active_tab,
-                        confirm_action: confirm_action.as_ref(),
-                        selected_dev,
-                        has_devices,
-                        filter_mode,
-                        sort_col:       &sort_col,
-                        state:          &state,
-                    });
+                    let action = input::resolve_key(key, &ctx);
 
-                    // Spawn background task before dispatching ExecuteDeviceOp to AppState
-                    if let Some(Action::ExecuteDeviceOp { ref path, ref kind }) = action {
-                        let tx   = action_tx.clone();
-                        let path = path.clone();
-                        let kind = kind.clone();
+                    // Extract bridge-relevant info before consuming action
+                    let device_op_cmd = if let Some(Action::ExecuteDeviceOp { ref path, ref kind }) = action {
+                        Some((path.clone(), kind.clone()))
+                    } else {
+                        None
+                    };
+                    let submit_activate_only = if let Some(Action::CreateSwapSubmit { activate_only }) = &action {
+                        Some(*activate_only)
+                    } else {
+                        None
+                    };
+
+                    // Spawn background task for device ops
+                    if let Some((path, kind)) = device_op_cmd {
+                        let tx = action_tx.clone();
                         tokio::task::spawn_blocking(move || {
                             let backend = LinuxBackend::new();
                             let result = match kind {
-                                DeviceOpKind::On          => backend.swap_on(&path),
-                                DeviceOpKind::Off         => backend.swap_off(&path),
+                                DeviceOpKind::On => backend.swap_on(&path),
+                                DeviceOpKind::Off => backend.swap_off(&path),
                                 DeviceOpKind::OffAndDelete => {
                                     backend.swap_off(&path).and_then(|()| {
                                         std::fs::remove_file(&path).map_err(|e| {
@@ -154,53 +148,58 @@ async fn run(
                                         color_eyre::eyre::eyre!("delete failed: {e}")
                                     })
                                 }
-                                DeviceOpKind::Reset       => backend.swap_reset(&path),
+                                DeviceOpKind::Reset => backend.swap_reset(&path),
                             };
                             let status = match result {
-                                Ok(_)  => OpStatus::Done,
+                                Ok(_) => OpStatus::Done,
                                 Err(e) => OpStatus::Error(e.to_string()),
                             };
                             let _ = tx.send(Action::DeviceOpUpdate(DeviceOp { path, kind, status }));
                         });
                     }
 
-                    // Phase 5 — spawn background create-swap task
-                    if let Some(Action::CreateSwapSubmit { activate_only }) = action {
-                        let submit = {
-                            let s = state.lock().expect("state mutex poisoned");
-                            s.create_swap_modal.as_ref().map(|m| {
-                                let size_n: u64 = m.size_input.value().trim().parse().unwrap_or(0);
-                                let size_bytes = size_n * m.size_unit.multiplier();
-                                let prio_n: i32 = m.priority_input.value().trim().parse().unwrap_or(0);
-                                // Clamp to i16 range so out-of-range user input cannot
-                                // silently wrap into a nonsensical negative priority.
-                                let prio_i16 = prio_n.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-                                (
-                                    std::path::PathBuf::from(m.path_input.value()),
-                                    size_bytes,
-                                    prio_i16,
-                                    m.activate_after,
-                                )
-                            })
-                        };
-                        if let Some((path, size_bytes, priority, activate_after)) = submit {
+                    // Dispatch to reducer
+                    if let Some(a) = action {
+                        let mut s = state.lock().expect("state mutex poisoned");
+                        s.handle_action(a);
+
+                        // After CreateSwapSubmit: spawn background task only if
+                        // validation passed (mode transitioned to Progress)
+                        if let Some(activate_only) = submit_activate_only
+                            && let Some(modal) = s.create_swap_modal.as_ref()
+                            && matches!(modal.mode, CreateSwapMode::Progress { .. })
+                        {
+                            let size_n: u64 = modal
+                                .size_input
+                                .value()
+                                .trim()
+                                .parse()
+                                .expect("validated by reducer");
+                            let size_bytes = size_n * modal.size_unit.multiplier();
+                            let prio_n: i32 = modal
+                                .priority_input
+                                .value()
+                                .trim()
+                                .parse()
+                                .expect("validated by reducer");
+                            let prio_i16 =
+                                prio_n.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+                            let path =
+                                std::path::PathBuf::from(modal.path_input.value());
+                            let activate_after = modal.activate_after;
                             let tx = action_tx.clone();
                             tokio::task::spawn_blocking(move || {
                                 run_create_swap_steps(
                                     path,
                                     size_bytes,
-                                    priority,
+                                    prio_i16,
                                     activate_after,
                                     activate_only,
                                     tx,
                                 );
                             });
                         }
-                    }
 
-                    if let Some(a) = action {
-                        let mut s = state.lock().expect("state mutex poisoned");
-                        s.handle_action(a);
                         processes_active.store(
                             s.active_tab == Tab::Processes,
                             Ordering::Relaxed,
