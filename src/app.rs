@@ -50,6 +50,8 @@ pub struct AppState {
 
     // Phase 6 — delete file on swapoff
     pub confirm_off_delete: Option<ConfirmOffDelete>,
+
+    pub is_root: bool,
 }
 
 impl AppState {
@@ -77,6 +79,7 @@ impl AppState {
             filter_mode: false,
             create_swap_modal: None,
             confirm_off_delete: None,
+            is_root: nix::unistd::geteuid().is_root(),
         }
     }
 
@@ -1142,6 +1145,15 @@ mod tests {
         assert!(state.confirm_off_delete.as_ref().unwrap().delete_file);
         state.handle_action(Action::ToggleConfirmDeleteFile);
         assert!(!state.confirm_off_delete.as_ref().unwrap().delete_file);
+    }
+
+    // ── is_root ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn is_root_field_exists_on_appstate() {
+        let state = AppState::new(make_caps());
+        // We're running tests as non-root, so expect false
+        assert!(!state.is_root);
     }
 
     #[test]
