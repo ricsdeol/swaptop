@@ -760,9 +760,7 @@ src/platform/windows.rs
 grep -rn 'use crate::create_swap' src/platform/
 ```
 
-Expected: **zero results**. The platform layer no longer imports from `src/create_swap.rs`.
-
-(Note: `platform/linux/create_swap.rs` imports `crate::create_swap::StepStatus` — this is the intentional narrow coupling documented in the spec. Verify it's only `StepStatus`.)
+Expected: **one result** — `platform/linux/create_swap.rs` importing `crate::create_swap::StepStatus` (intentional narrow coupling documented in the spec). Verify it's only `StepStatus`.
 
 ```bash
 grep -n 'crate::create_swap' src/platform/linux/create_swap.rs

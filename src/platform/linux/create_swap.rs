@@ -86,7 +86,7 @@ pub fn run_create_swap_steps(
     // activate_only path: go straight to Step 6 (swapon).
     if activate_only {
         send(6, StepStatus::Running);
-        match do_swapon(&path) {
+        match do_swapon_with_priority(&path, priority) {
             Ok(()) => send(6, StepStatus::Done),
             Err(e) => send(6, StepStatus::Error(e)),
         }
@@ -262,20 +262,6 @@ fn run_cmd(cmd: &mut StdCommand) -> Result<(), String> {
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(stderr.trim().to_string())
-    }
-}
-
-fn do_swapon(path: &std::path::Path) -> Result<(), String> {
-    let c = std::ffi::CString::new(path.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
-    // SAFETY: `c` is a valid NUL-terminated C string pointing to a valid path.
-    let ret = unsafe { nix::libc::swapon(c.as_ptr(), 0) };
-    if ret == 0 {
-        Ok(())
-    } else {
-        Err(format!(
-            "swapon failed: {}",
-            std::io::Error::last_os_error()
-        ))
     }
 }
 

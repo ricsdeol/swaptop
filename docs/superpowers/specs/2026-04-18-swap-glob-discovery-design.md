@@ -52,7 +52,7 @@ LinuxBackend::swap_devices()
 ```rust
 use std::{collections::HashSet, path::{Path, PathBuf}};
 use crate::platform::{SwapDevice, SwapKind};
-use crate::create_swap::detect_swap_magic;
+use crate::platform::parse_swap_header;
 
 /// Scan `dirs` for inactive swap files whose names match a pattern.
 /// Skips any path already present in `active_paths`.
@@ -139,7 +139,7 @@ const BSD_SCAN_DIRS: &[(&str, &[&str])] = &[
 ## What Does NOT Change
 
 - `probe_swap_device` (block device probing via `BLKGETSIZE64` ioctl) stays in `linux.rs` — it uses Linux-specific ioctls.
-- `detect_swap_magic` stays in `create_swap.rs` — it is called from both `swap_discovery` and the create-swap wizard.
+- `parse_swap_header` stays in `platform::types` — it is called from both `swap_discovery` and the create-swap wizard.
 - `parse_proc_swaps` stays in `linux.rs` — it is Linux-specific.
 - BSD and macOS backends continue returning `bail!` on all methods.
 

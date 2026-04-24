@@ -109,7 +109,8 @@ fn handle_devices_key(
                         (modal.path.clone(), modal.delete_file, modal.active)
                     };
                     let kind = match (delete_file, active) {
-                        (false, _) => DeviceOpKind::Off,
+                        (false, false) => return Some(Action::CancelConfirmOffDelete),
+                        (false, true) => DeviceOpKind::Off,
                         (true, false) => DeviceOpKind::DeleteOnly,
                         (true, true) => DeviceOpKind::OffAndDelete,
                     };
@@ -122,7 +123,7 @@ fn handle_devices_key(
     }
 
     if let Some(kind) = confirm_action {
-        // Modal is open — only 's'/Enter and Esc are active
+        // Modal is open — only 'c'/Enter and Esc are active
         return match code {
             KeyCode::Char('c') | KeyCode::Enter => {
                 let path = state
@@ -839,7 +840,7 @@ mod tests {
     }
 
     #[test]
-    fn off_delete_inactive_delete_false_dispatches_off() {
+    fn off_delete_inactive_delete_false_cancels() {
         let state = make_off_delete_state(false, false);
         let action = rk(
             key(KeyCode::Char('c')),
@@ -852,8 +853,8 @@ mod tests {
             &state,
         );
         assert!(
-            matches!(action, Some(Action::ExecuteDeviceOp { ref kind, .. }) if *kind == DeviceOpKind::Off),
-            "expected Off, got {action:?}"
+            matches!(action, Some(Action::CancelConfirmOffDelete)),
+            "expected CancelConfirmOffDelete, got {action:?}"
         );
     }
 
