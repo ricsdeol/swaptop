@@ -77,6 +77,20 @@ pub struct MemSnapshot {
     pub processes: Vec<ProcessRow>,
 }
 
+/// Check the first 4096 bytes for swap header (`SWAPSPACE2` or `SWAP-SPACE`)
+/// at offset 4086..4096. Returns the file size if the header is valid.
+pub fn parse_swap_header(buf: &[u8], size_bytes: u64) -> Option<u64> {
+    if buf.len() < 4096 {
+        return None;
+    }
+    let magic = &buf[4086..4096];
+    if magic == b"SWAPSPACE2" || magic == b"SWAP-SPACE" {
+        Some(size_bytes)
+    } else {
+        None
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -106,5 +120,31 @@ mod tests {
     fn swap_info_full_usage_gives_hundred_percent() {
         let info = SwapInfo::new(4 * 1024 * 1024 * 1024, 4 * 1024 * 1024 * 1024);
         assert!((info.percent - 100.0).abs() < 0.01, "got {}", info.percent);
+    }
+
+    #[test]
+    fn parse_swap_header_returns_size_on_swapspace2() {
+        let mut buf = vec![0u8; 4096];
+        buf[4086..4096].copy_from_slice(b"SWAPSPACE2");
+        assert_eq!(parse_swap_header(&buf, 2_147_483_648), Some(2_147_483_648));
+    }
+
+    #[test]
+    fn parse_swap_header_returns_size_on_swap_space() {
+        let mut buf = vec![0u8; 4096];
+        buf[4086..4096].copy_from_slice(b"SWAP-SPACE");
+        assert_eq!(parse_swap_header(&buf, 1024), Some(1024));
+    }
+
+    #[test]
+    fn parse_swap_header_returns_none_on_unknown_bytes() {
+        let buf = vec![0u8; 4096];
+        assert_eq!(parse_swap_header(&buf, 4096), None);
+    }
+
+    #[test]
+    fn parse_swap_header_returns_none_on_short_buffer() {
+        let buf = vec![0u8; 100];
+        assert_eq!(parse_swap_header(&buf, 100), None);
     }
 }

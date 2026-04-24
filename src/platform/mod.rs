@@ -4,7 +4,7 @@ pub mod factory;
 pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
-pub mod proc_reader;
+pub(crate) mod swap_discovery;
 pub mod types;
 #[cfg(target_os = "windows")]
 pub mod windows;

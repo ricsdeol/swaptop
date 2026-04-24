@@ -28,10 +28,14 @@ and the keybinding status bar at the bottom.*
 | ✅ | Active swap device summary |
 | ✅ | Tab navigation (Overview → Processes → Devices → Create Swap) |
 | ✅ | Platform abstraction — architecture ready for macOS, BSD, Windows |
-| 🔜 | Per-process swap table with sorting and filtering (`/proc/PID/smaps`) |
+| ✅ | Per-process swap table with sorting and filtering (`/proc/PID/smaps`) |
+| ✅ | Process table columns: PID, Name, User, RSS, Swap, CPU% |
+| ✅ | Sort cycling across all columns with direction toggle (▾ / ▲) |
+| ✅ | Live process filter with inline text input |
+| ✅ | `swapon` / `swapoff` device management (requires root) |
+| ✅ | Confirmation modal for destructive device operations |
 | 🔜 | Process detail view with history chart and kill action |
-| 🔜 | `swapon` / `swapoff` device management (requires root) |
-| 🔜 | Create swap file wizard (`fallocate → chmod → mkswap → swapon`) |
+| ✅ | Create swap file wizard (`fallocate → chmod → mkswap → swapon`) |
 
 ---
 
@@ -78,6 +82,8 @@ sudo ./swaptop
 
 ### Keybindings
 
+#### Global
+
 | Key | Action |
 |-----|--------|
 | `1` | Go to Overview tab |
@@ -86,12 +92,37 @@ sudo ./swaptop
 | `4` | Go to Create Swap tab |
 | `Tab` | Next tab |
 | `Shift+Tab` | Previous tab |
-| `r` | Force immediate refresh |
 | `q` / `Q` | Quit |
 | `Ctrl+C` | Quit |
 
-> Additional keybindings for process sorting (`s`), filtering (`/`), navigation
-> (`j`/`k`, `↑`/`↓`), and detail view (`Enter`/`Esc`) will be active in upcoming phases.
+> `r` is tab-specific: on Overview/Processes it forces an immediate refresh; on
+> Devices it triggers Reset on the selected device (see the Devices tab table).
+
+#### Processes tab
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Move selection down |
+| `k` / `↑` | Move selection up |
+| `s` | Cycle sort column (Swap → CPU% → RSS → PID → Name → Swap…) |
+| `/` | Enter filter mode — type to filter by process name |
+| `Enter` / `Esc` | Exit filter mode |
+| `Backspace` | Delete last character in filter |
+
+> Sorting toggles direction (descending ▾ / ascending ▲) when the same column
+> is selected twice in a row.
+
+#### Devices tab
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Move selection down |
+| `k` / `↑` | Move selection up |
+| `o` | Activate selected device (`swapon` — requires root) |
+| `f` | Deactivate selected device (`swapoff` — requires root) |
+| `r` | Reset selected device (swapoff + swapon — requires root) |
+| `s` / `Enter` | Confirm pending operation |
+| `Esc` | Cancel pending operation |
 
 ---
 
@@ -101,8 +132,9 @@ sudo ./swaptop
 src/
 ├── main.rs          # tokio::select! event loop (tick / frame / input)
 ├── app.rs           # AppState + Action reducer (pure, no I/O)
-├── actions.rs       # Action enum
+├── actions.rs       # Action enum + DeviceOp / SortColumn / SortDir types
 ├── collector.rs     # Calls SwapBackend, produces MemSnapshot
+├── input.rs         # resolve_key() — maps KeyEvent + KeyContext → Action
 ├── tui.rs           # Terminal init / restore helpers
 ├── platform/
 │   ├── mod.rs       # SwapBackend trait
@@ -113,8 +145,10 @@ src/
 │   ├── bsd.rs       # Stub — future
 │   └── windows.rs   # Stub — future
 └── ui/
-    ├── mod.rs        # Top-level render(), tab dispatch
+    ├── mod.rs        # Top-level render(), tab bar, tab dispatch
     ├── overview.rs   # RAM/Swap gauges + history chart + device summary
+    ├── processes.rs  # Sortable/filterable process table + filter bar + footer
+    ├── devices.rs    # Swap device table + swapon/swapoff + confirm modal
     ├── statusbar.rs  # Keybinding hints + error banners
     └── design.rs     # Spacing constants, color palette
 ```
@@ -126,10 +160,20 @@ Three concurrent tasks multiplexed via `tokio::select!`:
 - **tick** (1 s) — `Collector` calls the `SwapBackend`, produces a `MemSnapshot`,
   pushes `Action::UpdateSnapshot` into `AppState`
 - **frame** (~30 fps) — `terminal.draw()` reads `&AppState` (no mutations)
-- **input** — `crossterm::EventStream` → `Action` enum → `AppState::handle_action()`
+- **input** — `crossterm::EventStream` → `input::resolve_key()` → `Action` enum → `AppState::handle_action()`
 
 `AppState` is wrapped in `Arc<Mutex<AppState>>` and shared between the collector
 task and the render path.
+
+### Input handling
+
+Key events are resolved by `input::resolve_key()`, which receives a `KeyContext`
+struct containing the active tab, confirm-modal state, filter mode flag, and
+current sort column. Resolution is layered:
+
+1. **Filter mode** — captures all printable characters and `Backspace` / `Esc` / `Enter`
+2. **Global keys** — `q`, `Ctrl+C`, `Tab`, `Shift+Tab`, `1`–`4`
+3. **Tab-specific keys** — only fire when the matching tab is active
 
 ### Platform abstraction
 
@@ -145,6 +189,28 @@ correct backend at compile time.
 | Active swap devices | `/proc/swaps` |
 | Per-process swap | `/proc/PID/smaps` (`VmSwap:` field) |
 | Device control | `nix::mount::swapon` / `swapoff` |
+
+> `/proc/PID/smaps` parsing is expensive and is only triggered when the
+> Processes tab is active, via a `processes_active` atomic flag checked by
+> the collector.
+
+### State (`AppState`)
+
+| Field | Description |
+|-------|-------------|
+| `active_tab` | Currently visible tab |
+| `current` | Latest `MemSnapshot` |
+| `ram_history` / `swap_history` | Ring-buffer of `(Instant, bytes)`, capped at `max_history` (3 600 points) |
+| `processes` | Sorted + filtered `Vec<ProcessRow>` |
+| `sort_col` / `sort_dir` | Current sort state (default: Swap ▾) |
+| `filter_text` / `filter_mode` | Live process name filter |
+| `selected_row` | Highlighted row index in the process table |
+| `devices` | Active `Vec<SwapDevice>` |
+| `selected_dev` | Highlighted device index |
+| `device_op` | In-flight or completed device operation |
+| `confirm_action` | Pending `DeviceOpKind` awaiting user confirmation |
+| `capabilities` | Platform feature flags |
+| `error_msg` | Displayed in the status bar; cleared on next tick |
 
 ---
 

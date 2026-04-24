@@ -1,3 +1,4 @@
+pub(crate) mod create_swap;
 mod design;
 mod devices;
 mod overview;
@@ -12,7 +13,7 @@ use ratatui::{
     prelude::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Tabs},
+    widgets::{Block, Borders, Tabs},
 };
 
 use crate::app::{AppState, Tab};
@@ -26,7 +27,6 @@ pub fn render(f: &mut Frame, state: &AppState) {
         Tab::Overview => overview::render(f, layout[1], state),
         Tab::Processes => processes::render(f, layout[1], state),
         Tab::Devices => devices::render(f, layout[1], state),
-        _ => render_coming_soon(f, layout[1]),
     }
 
     statusbar::render(f, layout[2], state);
@@ -73,22 +73,12 @@ fn render_tabbar(f: &mut Frame, area: Rect, state: &AppState) {
             ),
             Span::styled(":Devices", Style::default().fg(Color::White)),
         ]),
-        Line::from(vec![
-            Span::styled(
-                "4",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(":Create Swap", Style::default().fg(Color::White)),
-        ]),
     ];
 
     let selected = match state.active_tab {
         Tab::Overview => 0,
         Tab::Processes => 1,
         Tab::Devices => 2,
-        Tab::CreateSwap => 3,
     };
 
     let tabs = Tabs::new(titles)
@@ -113,22 +103,6 @@ fn render_tabbar(f: &mut Frame, area: Rect, state: &AppState) {
         .divider(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
 
     f.render_widget(tabs, area);
-}
-
-fn render_coming_soon(f: &mut Frame, area: Rect) {
-    let p = Paragraph::new(Line::from(vec![
-        Span::raw("  "),
-        Span::styled(
-            "Coming in a future phase…",
-            Style::default().fg(Color::DarkGray),
-        ),
-    ]))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray)),
-    );
-    f.render_widget(p, area);
 }
 
 #[cfg(test)]

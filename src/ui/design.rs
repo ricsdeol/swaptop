@@ -17,7 +17,8 @@ mod tests {
 
     #[test]
     fn outer_gap_is_at_least_two_so_inner_gap_is_nonzero() {
-        assert!(OUTER_GAP >= 2, "OUTER_GAP must be ≥ 2 so INNER_GAP ≥ 1");
-        assert!(INNER_GAP >= 1, "INNER_GAP must be ≥ 1 for visible spacing");
+        // These are compile-time constants; verified with const assertions below.
+        const _: () = assert!(OUTER_GAP >= 2, "OUTER_GAP must be ≥ 2 so INNER_GAP ≥ 1");
+        const _: () = assert!(INNER_GAP >= 1, "INNER_GAP must be ≥ 1 for visible spacing");
     }
 }

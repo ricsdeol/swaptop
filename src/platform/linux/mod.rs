@@ -1,10 +1,22 @@
+pub(crate) mod create_swap;
+mod proc_reader;
+
 use std::path::{Path, PathBuf};
 
 use color_eyre::Result;
 use sysinfo::System;
 
-use super::proc_reader::ProcReader;
-use super::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind};
+use super::swap_discovery::discover_inactive_swap_files;
+use super::{
+    Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind, parse_swap_header,
+};
+use proc_reader::ProcReader;
+
+const LINUX_SCAN_DIRS: &[(&str, &[&str])] = &[
+    ("/", &["swap*", "*.swap", "*.img"]),
+    ("/var", &["swap*", "*.swap"]),
+    ("/mnt", &["swap*", "*.swap"]),
+];
 
 pub struct LinuxBackend {
     sys: System,
@@ -38,7 +50,32 @@ impl SwapBackend for LinuxBackend {
 
     fn swap_devices(&mut self) -> Result<Vec<SwapDevice>> {
         let content = std::fs::read_to_string("/proc/swaps")?;
-        Ok(parse_proc_swaps(&content))
+        let mut devices = parse_proc_swaps(&content);
+
+        let active_paths: std::collections::HashSet<PathBuf> = devices
+            .iter()
+            .flat_map(|d| {
+                let canonical = std::fs::canonicalize(&d.path).ok();
+                std::iter::once(d.path.clone()).chain(canonical)
+            })
+            .collect();
+
+        devices.extend(discover_inactive_swap_files(&active_paths, LINUX_SCAN_DIRS));
+
+        // Probe block devices in /dev/ for inactive swap partitions
+        if let Ok(entries) = std::fs::read_dir("/dev/") {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if active_paths.contains(&path) {
+                    continue;
+                }
+                if let Some(dev) = probe_swap_device(&path) {
+                    devices.push(dev);
+                }
+            }
+        }
+
+        Ok(devices)
     }
 
     fn process_list(&mut self) -> Result<Vec<ProcessRow>> {
@@ -131,6 +168,49 @@ fn parse_swap_line(line: &str) -> Option<SwapDevice> {
         kind,
         active: true,
     })
+}
+
+/// Check if `path` is a block device with swap magic header.
+/// Returns `None` silently on any I/O or permission error.
+fn probe_swap_device(path: &Path) -> Option<SwapDevice> {
+    if !is_block_device(path) {
+        return None;
+    }
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut buf = [0u8; 4096];
+    std::io::Read::read_exact(&mut f, &mut buf).ok()?;
+    // `metadata().len()` returns 0 for block devices on Linux, so query the
+    // real size via the BLKGETSIZE64 ioctl on the open fd.
+    let size = block_device_size(&f)?;
+    parse_swap_header(&buf, size)?;
+    Some(SwapDevice {
+        path: path.to_path_buf(),
+        total: size,
+        used: 0,
+        priority: 0,
+        kind: SwapKind::Partition,
+        active: false,
+    })
+}
+
+/// Return the size in bytes of a block device via `BLKGETSIZE64`.
+fn block_device_size(file: &std::fs::File) -> Option<u64> {
+    use std::os::unix::io::AsRawFd;
+    // BLKGETSIZE64 = _IOR(0x12, 114, size_t) = 0x80081272 on Linux.
+    const BLKGETSIZE64: nix::libc::c_ulong = 0x8008_1272;
+    let fd = file.as_raw_fd();
+    let mut size: u64 = 0;
+    // SAFETY: `fd` is a valid open file descriptor for a block device;
+    // `size` is a valid mutable u64 pointer matching the ioctl's size_t out-param.
+    let ret = unsafe { nix::libc::ioctl(fd, BLKGETSIZE64, &mut size as *mut u64) };
+    if ret == 0 { Some(size) } else { None }
+}
+
+fn is_block_device(path: &Path) -> bool {
+    use nix::sys::stat::SFlag;
+    nix::sys::stat::stat(path)
+        .map(|s| SFlag::from_bits_truncate(s.st_mode) & SFlag::S_IFMT == SFlag::S_IFBLK)
+        .unwrap_or(false)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

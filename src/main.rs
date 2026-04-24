@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use color_eyre::Result;
 use crossterm::event::{Event as CrosstermEvent, EventStream};
@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 mod actions;
 mod app;
 mod collector;
+mod create_swap;
 mod input;
 mod platform;
 mod tui;
@@ -23,6 +24,7 @@ use app::{AppState, Tab};
 use collector::Collector;
 use platform::SwapBackend;
 use platform::linux::LinuxBackend;
+use platform::linux::create_swap::run_create_swap_steps;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -40,7 +42,10 @@ async fn main() -> Result<()> {
             .lock()
             .expect("state mutex poisoned")
             .handle_action(Action::UpdateSnapshot(snap)),
-        Err(e) => state.lock().expect("state mutex poisoned").error_msg = Some(e.to_string()),
+        Err(e) => {
+            state.lock().expect("state mutex poisoned").error_msg =
+                Some((e.to_string(), Instant::now()))
+        }
     }
 
     let mut terminal = tui::init()?;
@@ -90,7 +95,7 @@ async fn run(
             _ = tick.tick() => {
                 match col.collect().await {
                     Ok(snap) => state.lock().expect("state mutex poisoned").handle_action(Action::UpdateSnapshot(snap)),
-                    Err(e)   => state.lock().expect("state mutex poisoned").error_msg = Some(e.to_string()),
+                    Err(e)   => state.lock().expect("state mutex poisoned").error_msg = Some((e.to_string(), Instant::now())),
                 }
             }
 
@@ -133,9 +138,23 @@ async fn run(
                         tokio::task::spawn_blocking(move || {
                             let backend = LinuxBackend::new();
                             let result = match kind {
-                                DeviceOpKind::On    => backend.swap_on(&path),
-                                DeviceOpKind::Off   => backend.swap_off(&path),
-                                DeviceOpKind::Reset => backend.swap_reset(&path),
+                                DeviceOpKind::On          => backend.swap_on(&path),
+                                DeviceOpKind::Off         => backend.swap_off(&path),
+                                DeviceOpKind::OffAndDelete => {
+                                    backend.swap_off(&path).and_then(|()| {
+                                        std::fs::remove_file(&path).map_err(|e| {
+                                            color_eyre::eyre::eyre!(
+                                                "deactivated; delete failed: {e}"
+                                            )
+                                        })
+                                    })
+                                }
+                                DeviceOpKind::DeleteOnly => {
+                                    std::fs::remove_file(&path).map_err(|e| {
+                                        color_eyre::eyre::eyre!("delete failed: {e}")
+                                    })
+                                }
+                                DeviceOpKind::Reset       => backend.swap_reset(&path),
                             };
                             let status = match result {
                                 Ok(_)  => OpStatus::Done,
@@ -143,6 +162,40 @@ async fn run(
                             };
                             let _ = tx.send(Action::DeviceOpUpdate(DeviceOp { path, kind, status }));
                         });
+                    }
+
+                    // Phase 5 — spawn background create-swap task
+                    if let Some(Action::CreateSwapSubmit { activate_only }) = action {
+                        let submit = {
+                            let s = state.lock().expect("state mutex poisoned");
+                            s.create_swap_modal.as_ref().map(|m| {
+                                let size_n: u64 = m.size_input.value().trim().parse().unwrap_or(0);
+                                let size_bytes = size_n * m.size_unit.multiplier();
+                                let prio_n: i32 = m.priority_input.value().trim().parse().unwrap_or(0);
+                                // Clamp to i16 range so out-of-range user input cannot
+                                // silently wrap into a nonsensical negative priority.
+                                let prio_i16 = prio_n.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+                                (
+                                    std::path::PathBuf::from(m.path_input.value()),
+                                    size_bytes,
+                                    prio_i16,
+                                    m.activate_after,
+                                )
+                            })
+                        };
+                        if let Some((path, size_bytes, priority, activate_after)) = submit {
+                            let tx = action_tx.clone();
+                            tokio::task::spawn_blocking(move || {
+                                run_create_swap_steps(
+                                    path,
+                                    size_bytes,
+                                    priority,
+                                    activate_after,
+                                    activate_only,
+                                    tx,
+                                );
+                            });
+                        }
                     }
 
                     if let Some(a) = action {

@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::actions::{Action, DeviceOp, DeviceOpKind, OpStatus, SortColumn, SortDir};
+use crate::create_swap::{CreateSwapModal, CreateSwapMode, CreateSwapStep};
 use crate::platform::{Capabilities, MemSnapshot, ProcessRow, SwapDevice};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -9,7 +11,13 @@ pub enum Tab {
     Overview,
     Processes,
     Devices,
-    CreateSwap,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfirmOffDelete {
+    pub path: PathBuf,
+    pub delete_file: bool,
+    pub active: bool,
 }
 
 pub struct AppState {
@@ -20,7 +28,7 @@ pub struct AppState {
     pub current: Option<MemSnapshot>,
     pub devices: Vec<SwapDevice>,
     pub capabilities: Capabilities,
-    pub error_msg: Option<String>,
+    pub error_msg: Option<(String, Instant)>,
     pub start_time: Instant,
     pub should_quit: bool,
 
@@ -36,6 +44,12 @@ pub struct AppState {
     pub selected_row: usize,
     pub filter_text: String,
     pub filter_mode: bool,
+
+    // Phase 5
+    pub create_swap_modal: Option<CreateSwapModal>,
+
+    // Phase 6 — delete file on swapoff
+    pub confirm_off_delete: Option<ConfirmOffDelete>,
 }
 
 impl AppState {
@@ -61,6 +75,8 @@ impl AppState {
             selected_row: 0,
             filter_text: String::new(),
             filter_mode: false,
+            create_swap_modal: None,
+            confirm_off_delete: None,
         }
     }
 
@@ -107,17 +123,15 @@ impl AppState {
                 self.active_tab = match self.active_tab {
                     Tab::Overview => Tab::Processes,
                     Tab::Processes => Tab::Devices,
-                    Tab::Devices => Tab::CreateSwap,
-                    Tab::CreateSwap => Tab::Overview,
+                    Tab::Devices => Tab::Overview,
                 };
             }
 
             Action::PrevTab => {
                 self.active_tab = match self.active_tab {
-                    Tab::Overview => Tab::CreateSwap,
+                    Tab::Overview => Tab::Devices,
                     Tab::Processes => Tab::Overview,
                     Tab::Devices => Tab::Processes,
-                    Tab::CreateSwap => Tab::Devices,
                 };
             }
 
@@ -126,7 +140,6 @@ impl AppState {
                     1 => Tab::Overview,
                     2 => Tab::Processes,
                     3 => Tab::Devices,
-                    4 => Tab::CreateSwap,
                     _ => return,
                 };
             }
@@ -156,13 +169,18 @@ impl AppState {
                     self.selected_dev = self.selected_dev.min(self.devices.len() - 1);
                 }
                 self.current = Some(snapshot);
-                self.error_msg = None;
+                // Clear stale errors (older than 5 s); keep recent ones visible.
+                if self
+                    .error_msg
+                    .as_ref()
+                    .is_some_and(|(_, t)| t.elapsed().as_secs() >= 5)
+                {
+                    self.error_msg = None;
+                }
             }
 
-            Action::Refresh => {} // collector tick handles it
-
             Action::SetError(msg) => {
-                self.error_msg = Some(msg);
+                self.error_msg = Some((msg, Instant::now()));
             }
 
             // Phase 4 — device navigation
@@ -187,6 +205,7 @@ impl AppState {
 
             Action::ExecuteDeviceOp { path, kind } => {
                 self.confirm_action = None;
+                self.confirm_off_delete = None;
                 self.device_op = Some(DeviceOp {
                     path,
                     kind,
@@ -196,7 +215,7 @@ impl AppState {
 
             Action::DeviceOpUpdate(op) => {
                 if let OpStatus::Error(ref msg) = op.status {
-                    self.error_msg = Some(msg.clone());
+                    self.error_msg = Some((msg.clone(), Instant::now()));
                 }
                 self.device_op = Some(op);
             }
@@ -244,6 +263,159 @@ impl AppState {
             Action::ExitFilterMode => {
                 self.filter_mode = false;
             }
+
+            // Phase 5 — create swap modal
+            Action::OpenCreateSwap => {
+                self.create_swap_modal = Some(CreateSwapModal::default());
+            }
+
+            Action::CloseCreateSwap => {
+                self.create_swap_modal = None;
+            }
+
+            Action::CreateSwapReturnToForm => {
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.mode = CreateSwapMode::Form {
+                        focused_field: crate::create_swap::CreateSwapField::Submit,
+                    };
+                }
+            }
+
+            Action::CreateSwapFocusField(field) => {
+                if let Some(modal) = self.create_swap_modal.as_mut()
+                    && let CreateSwapMode::Form { focused_field } = &mut modal.mode
+                {
+                    *focused_field = field;
+                }
+            }
+
+            Action::CreateSwapInputEvent(event) => {
+                if let Some(modal) = self.create_swap_modal.as_mut()
+                    && let CreateSwapMode::Form { focused_field } = modal.mode
+                {
+                    use tui_input::backend::crossterm::EventHandler;
+                    let target = match focused_field {
+                        crate::create_swap::CreateSwapField::Path => Some(&mut modal.path_input),
+                        crate::create_swap::CreateSwapField::Size => Some(&mut modal.size_input),
+                        crate::create_swap::CreateSwapField::Priority => {
+                            Some(&mut modal.priority_input)
+                        }
+                        _ => None,
+                    };
+                    if let Some(input) = target {
+                        let _ = input.handle_event(&event);
+                    }
+                }
+            }
+
+            Action::CreateSwapToggleUnit => {
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.size_unit = modal.size_unit.toggled();
+                }
+            }
+
+            Action::CreateSwapToggleActivate => {
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.activate_after = !modal.activate_after;
+                }
+            }
+
+            Action::CreateSwapSubmit { activate_only } => {
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.validation_error = None;
+                    let mut steps = vec![
+                        CreateSwapStep::pending("Check disk space"),
+                        CreateSwapStep::pending("Check target file"),
+                        CreateSwapStep::pending("Detect filesystem"),
+                        CreateSwapStep::pending("Allocate file"),
+                        CreateSwapStep::pending("chmod 600"),
+                        CreateSwapStep::pending("mkswap"),
+                        CreateSwapStep::pending("swapon"),
+                    ];
+                    if activate_only {
+                        // Background runner skips steps 0..=5 and only updates step 6.
+                        // Mark the skipped ones as Done so the UI doesn't show them
+                        // stuck on Pending for the lifetime of the operation.
+                        for step in steps.iter_mut().take(6) {
+                            step.status = crate::create_swap::StepStatus::Done;
+                        }
+                    }
+                    modal.mode = CreateSwapMode::Progress { steps };
+                }
+            }
+
+            Action::OpenConfirmActivateOnly { path, size_bytes } => {
+                if let Some(modal) = self.create_swap_modal.as_mut() {
+                    modal.mode = CreateSwapMode::ConfirmActivateOnly { path, size_bytes };
+                }
+            }
+
+            Action::CreateSwapStepUpdate { index, status } => {
+                if let Some(modal) = self.create_swap_modal.as_mut()
+                    && let CreateSwapMode::Progress { steps } = &mut modal.mode
+                    && let Some(step) = steps.get_mut(index)
+                {
+                    step.status = status;
+                }
+            }
+
+            Action::CreateSwapSetCompletions(items) => {
+                if let Some(ref mut modal) = self.create_swap_modal {
+                    modal.completion_sel = if items.is_empty() { None } else { Some(0) };
+                    modal.completions = items;
+                }
+            }
+
+            Action::CreateSwapCompletionMove(delta) => {
+                if let Some(ref mut modal) = self.create_swap_modal
+                    && !modal.completions.is_empty()
+                {
+                    let len = modal.completions.len() as i16;
+                    let cur = modal.completion_sel.unwrap_or(0) as i16;
+                    let next = ((cur + delta) % len + len) % len;
+                    modal.completion_sel = Some(next as usize);
+                }
+            }
+
+            Action::CreateSwapApplyCompletion => {
+                if let Some(ref mut modal) = self.create_swap_modal {
+                    if let Some(sel) = modal.completion_sel
+                        && let Some(value) = modal.completions.get(sel).cloned()
+                    {
+                        modal.path_input = tui_input::Input::from(value);
+                    }
+                    modal.completions.clear();
+                    modal.completion_sel = None;
+                }
+            }
+
+            Action::CreateSwapClearCompletions => {
+                if let Some(ref mut modal) = self.create_swap_modal {
+                    modal.completions.clear();
+                    modal.completion_sel = None;
+                }
+            }
+
+            // Phase 6 — delete file on swapoff
+            Action::RequestConfirmOffDelete => {
+                if let Some(dev) = self.devices.get(self.selected_dev) {
+                    self.confirm_off_delete = Some(ConfirmOffDelete {
+                        path: dev.path.clone(),
+                        delete_file: false,
+                        active: dev.active,
+                    });
+                }
+            }
+
+            Action::ToggleConfirmDeleteFile => {
+                if let Some(ref mut modal) = self.confirm_off_delete {
+                    modal.delete_file = !modal.delete_file;
+                }
+            }
+
+            Action::CancelConfirmOffDelete => {
+                self.confirm_off_delete = None;
+            }
         }
     }
 }
@@ -267,7 +439,7 @@ mod tests {
         MemSnapshot {
             timestamp: Instant::now(),
             ram: SwapInfo::new(16 * 1024 * 1024 * 1024, 8 * 1024 * 1024 * 1024),
-            swap: SwapInfo::new(4 * 1024 * 1024 * 1024, 1 * 1024 * 1024 * 1024),
+            swap: SwapInfo::new(4 * 1024 * 1024 * 1024, 1024 * 1024 * 1024),
             devices: vec![],
             processes: vec![],
         }
@@ -277,7 +449,7 @@ mod tests {
         SwapDevice {
             path: path.into(),
             total: 4 * 1024 * 1024 * 1024,
-            used: 1 * 1024 * 1024 * 1024,
+            used: 1024 * 1024 * 1024,
             priority: -1,
             kind: SwapKind::Partition,
             active: true,
@@ -315,8 +487,6 @@ mod tests {
         state.handle_action(Action::NextTab);
         assert_eq!(state.active_tab, Tab::Devices);
         state.handle_action(Action::NextTab);
-        assert_eq!(state.active_tab, Tab::CreateSwap);
-        state.handle_action(Action::NextTab);
         assert_eq!(state.active_tab, Tab::Overview);
     }
 
@@ -324,7 +494,7 @@ mod tests {
     fn prev_tab_wraps_backward_from_overview() {
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::PrevTab);
-        assert_eq!(state.active_tab, Tab::CreateSwap);
+        assert_eq!(state.active_tab, Tab::Devices);
     }
 
     #[test]
@@ -369,9 +539,10 @@ mod tests {
     #[test]
     fn update_snapshot_clears_error_message() {
         let mut state = AppState::new(make_caps());
-        state.error_msg = Some("previous error".to_string());
+        // A fresh error (< 5 s old) must NOT be cleared by UpdateSnapshot.
+        state.handle_action(Action::SetError("previous error".to_string()));
         state.handle_action(Action::UpdateSnapshot(make_snapshot()));
-        assert!(state.error_msg.is_none());
+        assert!(state.error_msg.is_some());
     }
 
     #[test]
@@ -381,7 +552,7 @@ mod tests {
         snap.devices = vec![SwapDevice {
             path: "/dev/sda2".into(),
             total: 4 * 1024 * 1024 * 1024,
-            used: 1 * 1024 * 1024 * 1024,
+            used: 1024 * 1024 * 1024,
             priority: -1,
             kind: SwapKind::Partition,
             active: true,
@@ -479,7 +650,7 @@ mod tests {
             kind: DeviceOpKind::Off,
             status: OpStatus::Error("swapoff failed: EPERM".to_string()),
         }));
-        assert_eq!(state.error_msg, Some("swapoff failed: EPERM".to_string()));
+        assert!(matches!(&state.error_msg, Some((msg, _)) if msg == "swapoff failed: EPERM"));
         assert!(state.device_op.is_some());
     }
 
@@ -487,7 +658,7 @@ mod tests {
     fn set_error_stores_message() {
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::SetError("Requires root".to_string()));
-        assert_eq!(state.error_msg, Some("Requires root".to_string()));
+        assert!(matches!(&state.error_msg, Some((msg, _)) if msg == "Requires root"));
     }
 
     #[test]
@@ -636,6 +807,232 @@ mod tests {
         assert_eq!(state.filtered_len(), 1);
     }
 
+    // ── Phase 5 — create swap modal ──────────────────────────────────────────
+
+    #[test]
+    fn open_create_swap_initializes_modal() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        assert!(state.create_swap_modal.is_some());
+    }
+
+    #[test]
+    fn close_create_swap_clears_modal() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CloseCreateSwap);
+        assert!(state.create_swap_modal.is_none());
+    }
+
+    #[test]
+    fn focus_field_updates_form_focus() {
+        use crate::create_swap::{CreateSwapField, CreateSwapMode};
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapFocusField(CreateSwapField::Size));
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match modal.mode {
+            CreateSwapMode::Form { focused_field } => {
+                assert_eq!(focused_field, CreateSwapField::Size);
+            }
+            _ => panic!("expected Form mode"),
+        }
+    }
+
+    #[test]
+    fn toggle_unit_flips_mb_gb() {
+        use crate::create_swap::SizeUnit;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        let before = state.create_swap_modal.as_ref().unwrap().size_unit;
+        assert_eq!(before, SizeUnit::Gb);
+        state.handle_action(Action::CreateSwapToggleUnit);
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().size_unit,
+            SizeUnit::Mb
+        );
+    }
+
+    #[test]
+    fn toggle_activate_flips_boolean() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        assert!(state.create_swap_modal.as_ref().unwrap().activate_after);
+        state.handle_action(Action::CreateSwapToggleActivate);
+        assert!(!state.create_swap_modal.as_ref().unwrap().activate_after);
+    }
+
+    #[test]
+    fn submit_transitions_to_progress_with_seven_steps() {
+        use crate::create_swap::CreateSwapMode;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match &modal.mode {
+            CreateSwapMode::Progress { steps } => assert_eq!(steps.len(), 7),
+            _ => panic!("expected Progress mode"),
+        }
+    }
+
+    #[test]
+    fn step_update_replaces_status_at_index() {
+        use crate::create_swap::{CreateSwapMode, StepStatus};
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        state.handle_action(Action::CreateSwapStepUpdate {
+            index: 0,
+            status: StepStatus::Running,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match &modal.mode {
+            CreateSwapMode::Progress { steps } => {
+                assert_eq!(steps[0].status, StepStatus::Running);
+            }
+            _ => panic!("expected Progress mode"),
+        }
+    }
+
+    #[test]
+    fn return_to_form_preserves_inputs_and_validation_error() {
+        use crate::create_swap::{CreateSwapField, CreateSwapMode};
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        {
+            let modal = state.create_swap_modal.as_mut().unwrap();
+            modal.validation_error = Some("some prior error".to_string());
+        }
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        state.handle_action(Action::CreateSwapReturnToForm);
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match modal.mode {
+            CreateSwapMode::Form { focused_field } => {
+                assert_eq!(focused_field, CreateSwapField::Submit);
+            }
+            _ => panic!("expected Form mode"),
+        }
+    }
+
+    #[test]
+    fn open_confirm_activate_only_switches_mode() {
+        use crate::create_swap::CreateSwapMode;
+        use std::path::PathBuf;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::OpenConfirmActivateOnly {
+            path: PathBuf::from("/swapfile"),
+            size_bytes: 2_147_483_648,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        match &modal.mode {
+            CreateSwapMode::ConfirmActivateOnly { path, size_bytes } => {
+                assert_eq!(path, &PathBuf::from("/swapfile"));
+                assert_eq!(*size_bytes, 2_147_483_648);
+            }
+            _ => panic!("expected ConfirmActivateOnly mode"),
+        }
+    }
+
+    // ── Phase 6 — autocomplete ────────────────────────────────────────────────
+
+    #[test]
+    fn set_completions_stores_and_selects_first() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![
+            "/swapfile".to_string(),
+            "/swap.img".to_string(),
+        ]));
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert_eq!(modal.completions.len(), 2);
+        assert_eq!(modal.completion_sel, Some(0));
+    }
+
+    #[test]
+    fn set_completions_empty_sets_sel_none() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![]));
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert!(modal.completions.is_empty());
+        assert_eq!(modal.completion_sel, None);
+    }
+
+    #[test]
+    fn completion_move_wraps_forward() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+        ]));
+        state.handle_action(Action::CreateSwapCompletionMove(1));
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().completion_sel,
+            Some(1)
+        );
+        state.handle_action(Action::CreateSwapCompletionMove(1));
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().completion_sel,
+            Some(2)
+        );
+        state.handle_action(Action::CreateSwapCompletionMove(1));
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().completion_sel,
+            Some(0)
+        ); // wrap
+    }
+
+    #[test]
+    fn completion_move_wraps_backward() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![
+            "a".to_string(),
+            "b".to_string(),
+        ]));
+        state.handle_action(Action::CreateSwapCompletionMove(-1));
+        assert_eq!(
+            state.create_swap_modal.as_ref().unwrap().completion_sel,
+            Some(1)
+        ); // wrap
+    }
+
+    #[test]
+    fn apply_completion_sets_path_and_clears() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec![
+            "/swapfile".to_string(),
+            "/swap.img".to_string(),
+        ]));
+        state.handle_action(Action::CreateSwapCompletionMove(1)); // select /swap.img
+        state.handle_action(Action::CreateSwapApplyCompletion);
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert_eq!(modal.path_input.value(), "/swap.img");
+        assert!(modal.completions.is_empty());
+        assert_eq!(modal.completion_sel, None);
+    }
+
+    #[test]
+    fn clear_completions_resets_state() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.handle_action(Action::CreateSwapSetCompletions(vec!["x".to_string()]));
+        state.handle_action(Action::CreateSwapClearCompletions);
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert!(modal.completions.is_empty());
+        assert_eq!(modal.completion_sel, None);
+    }
+
     // ── UpdateSnapshot sorts ──────────────────────────────────────────────────
 
     #[test]
@@ -669,5 +1066,100 @@ mod tests {
         snap2.processes = vec![make_process(1, "a", 0)];
         state.handle_action(Action::UpdateSnapshot(snap2));
         assert_eq!(state.selected_row, 0);
+    }
+
+    // ── Phase 6 — ConfirmOffDelete ────────────────────────────────────────────
+
+    #[test]
+    fn request_confirm_off_delete_opens_modal() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: true,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        let modal = state.confirm_off_delete.as_ref().unwrap();
+        assert_eq!(modal.path, PathBuf::from("/swapfile"));
+        assert!(!modal.delete_file);
+    }
+
+    #[test]
+    fn request_confirm_off_delete_captures_active_true() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: true,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        assert!(state.confirm_off_delete.as_ref().unwrap().active);
+    }
+
+    #[test]
+    fn request_confirm_off_delete_captures_active_false() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: false,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        assert!(!state.confirm_off_delete.as_ref().unwrap().active);
+    }
+
+    #[test]
+    fn toggle_confirm_delete_file_flips() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: true,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        assert!(!state.confirm_off_delete.as_ref().unwrap().delete_file);
+        state.handle_action(Action::ToggleConfirmDeleteFile);
+        assert!(state.confirm_off_delete.as_ref().unwrap().delete_file);
+        state.handle_action(Action::ToggleConfirmDeleteFile);
+        assert!(!state.confirm_off_delete.as_ref().unwrap().delete_file);
+    }
+
+    #[test]
+    fn cancel_confirm_off_delete_clears_modal() {
+        use crate::platform::SwapKind;
+        let mut state = AppState::new(make_caps());
+        state.devices = vec![SwapDevice {
+            path: "/swapfile".into(),
+            total: 1024,
+            used: 0,
+            priority: 0,
+            kind: SwapKind::File,
+            active: true,
+        }];
+        state.selected_dev = 0;
+        state.handle_action(Action::RequestConfirmOffDelete);
+        assert!(state.confirm_off_delete.is_some());
+        state.handle_action(Action::CancelConfirmOffDelete);
+        assert!(state.confirm_off_delete.is_none());
     }
 }

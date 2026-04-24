@@ -4,6 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::actions::{Action, DeviceOpKind, SortColumn};
 use crate::app::{AppState, Tab};
+use crate::create_swap::CreateSwapMode;
 
 /// Context passed to [`resolve_key`] to avoid an 8-argument signature.
 pub struct KeyContext<'a> {
@@ -36,6 +37,15 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext<'_>) -> Option<Action> {
         };
     }
 
+    // Priority 1.5: create-swap modal intercepts keys when open.
+    let modal_open = {
+        let s = state.lock().expect("state mutex poisoned");
+        s.create_swap_modal.is_some()
+    };
+    if modal_open {
+        return handle_create_swap_key(key, state);
+    }
+
     // Global keys (always active)
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => return Some(Action::Quit),
@@ -47,7 +57,6 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext<'_>) -> Option<Action> {
         KeyCode::Char('1') => return Some(Action::SelectTab(1)),
         KeyCode::Char('2') => return Some(Action::SelectTab(2)),
         KeyCode::Char('3') => return Some(Action::SelectTab(3)),
-        KeyCode::Char('4') => return Some(Action::SelectTab(4)),
         _ => {}
     }
 
@@ -60,7 +69,6 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext<'_>) -> Option<Action> {
                 return Some(Action::SortBy(next_sort_column(sort_col)));
             }
             KeyCode::Char('/') => return Some(Action::EnterFilterMode),
-            KeyCode::Char('r') => return Some(Action::Refresh),
             _ => {}
         },
         Tab::Devices => {
@@ -72,11 +80,7 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext<'_>) -> Option<Action> {
                 state,
             );
         }
-        _ => {
-            if let KeyCode::Char('r') = key.code {
-                return Some(Action::Refresh);
-            }
-        }
+        _ => {}
     }
 
     None
@@ -89,10 +93,39 @@ fn handle_devices_key(
     has_devices: bool,
     state: &Arc<Mutex<AppState>>,
 ) -> Option<Action> {
+    // Off-delete modal takes priority when open
+    {
+        let off_delete_open = {
+            let s = state.lock().expect("state mutex poisoned");
+            s.confirm_off_delete.is_some()
+        };
+        if off_delete_open {
+            return match code {
+                KeyCode::Char(' ') => Some(Action::ToggleConfirmDeleteFile),
+                KeyCode::Char('c') | KeyCode::Enter => {
+                    let (path, delete_file, active) = {
+                        let s = state.lock().expect("state mutex poisoned");
+                        let modal = s.confirm_off_delete.as_ref()?;
+                        (modal.path.clone(), modal.delete_file, modal.active)
+                    };
+                    let kind = match (delete_file, active) {
+                        (false, false) => return Some(Action::CancelConfirmOffDelete),
+                        (false, true) => DeviceOpKind::Off,
+                        (true, false) => DeviceOpKind::DeleteOnly,
+                        (true, true) => DeviceOpKind::OffAndDelete,
+                    };
+                    Some(Action::ExecuteDeviceOp { path, kind })
+                }
+                KeyCode::Esc => Some(Action::CancelConfirmOffDelete),
+                _ => None,
+            };
+        }
+    }
+
     if let Some(kind) = confirm_action {
-        // Modal is open — only 's'/Enter and Esc are active
+        // Modal is open — only 'c'/Enter and Esc are active
         return match code {
-            KeyCode::Char('s') | KeyCode::Enter => {
+            KeyCode::Char('c') | KeyCode::Enter => {
                 let path = state
                     .lock()
                     .expect("state mutex poisoned")
@@ -115,25 +148,69 @@ fn handle_devices_key(
         KeyCode::Char('k') | KeyCode::Up => Some(Action::DeviceUp),
         KeyCode::Char('r') if has_devices => {
             if nix::unistd::geteuid().is_root() {
-                Some(Action::RequestConfirm(DeviceOpKind::Reset))
+                let is_active = {
+                    let s = state.lock().expect("state mutex poisoned");
+                    s.devices
+                        .get(selected_dev)
+                        .map(|d| d.active)
+                        .unwrap_or(false)
+                };
+                if is_active {
+                    Some(Action::RequestConfirm(DeviceOpKind::Reset))
+                } else {
+                    Some(Action::SetError(
+                        "Swap is not active — activate it first".to_string(),
+                    ))
+                }
             } else {
                 Some(Action::SetError(
                     "Requires root — run: sudo swaptop".to_string(),
                 ))
             }
         }
-        KeyCode::Char('o') if has_devices => {
+        KeyCode::Char('a') if has_devices => {
             if nix::unistd::geteuid().is_root() {
-                Some(Action::RequestConfirm(DeviceOpKind::On))
+                let is_active = {
+                    let s = state.lock().expect("state mutex poisoned");
+                    s.devices
+                        .get(selected_dev)
+                        .map(|d| d.active)
+                        .unwrap_or(false)
+                };
+                if is_active {
+                    Some(Action::SetError("Swap is already active".to_string()))
+                } else {
+                    Some(Action::RequestConfirm(DeviceOpKind::On))
+                }
             } else {
                 Some(Action::SetError(
                     "Requires root — run: sudo swaptop".to_string(),
                 ))
             }
         }
-        KeyCode::Char('f') if has_devices => {
+        KeyCode::Char('d') if has_devices => {
             if nix::unistd::geteuid().is_root() {
-                Some(Action::RequestConfirm(DeviceOpKind::Off))
+                let is_file_type = {
+                    let s = state.lock().expect("state mutex poisoned");
+                    s.devices
+                        .get(selected_dev)
+                        .map(|d| matches!(d.kind, crate::platform::SwapKind::File))
+                        .unwrap_or(false)
+                };
+                if is_file_type {
+                    Some(Action::RequestConfirmOffDelete)
+                } else {
+                    Some(Action::RequestConfirm(DeviceOpKind::Off))
+                }
+            } else {
+                Some(Action::SetError(
+                    "Requires root — run: sudo swaptop".to_string(),
+                ))
+            }
+        }
+        KeyCode::Char('n') => {
+            if nix::unistd::geteuid().is_root() {
+                Some(Action::OpenCreateSwap)
             } else {
                 Some(Action::SetError(
                     "Requires root — run: sudo swaptop".to_string(),
@@ -142,6 +219,275 @@ fn handle_devices_key(
         }
         _ => None,
     }
+}
+
+fn handle_create_swap_key(key: KeyEvent, state: &Arc<Mutex<AppState>>) -> Option<Action> {
+    use crate::create_swap::CreateSwapField;
+
+    let (
+        mode_variant,
+        focused_field,
+        path_value,
+        size_value,
+        priority_value,
+        size_unit,
+        completions_showing,
+    ) = {
+        let s = state.lock().expect("state mutex poisoned");
+        let modal = s.create_swap_modal.as_ref()?;
+        let focused = match &modal.mode {
+            CreateSwapMode::Form { focused_field } => Some(*focused_field),
+            _ => None,
+        };
+        let mode_variant = match &modal.mode {
+            CreateSwapMode::Form { .. } => "form",
+            CreateSwapMode::Progress { .. } => "progress",
+            CreateSwapMode::ConfirmActivateOnly { .. } => "confirm_activate",
+        };
+        (
+            mode_variant,
+            focused,
+            modal.path_input.value().to_string(),
+            modal.size_input.value().to_string(),
+            modal.priority_input.value().to_string(),
+            modal.size_unit,
+            !modal.completions.is_empty(),
+        )
+    };
+
+    match mode_variant {
+        "form" => {
+            let focused = focused_field?;
+
+            // Completions popup is showing — intercept navigation keys
+            if completions_showing {
+                return match key.code {
+                    KeyCode::Down | KeyCode::Tab => Some(Action::CreateSwapCompletionMove(1)),
+                    KeyCode::Up => Some(Action::CreateSwapCompletionMove(-1)),
+                    KeyCode::Enter => Some(Action::CreateSwapApplyCompletion),
+                    KeyCode::Esc => Some(Action::CreateSwapClearCompletions),
+                    _ => {
+                        // Any other key: clear completions inline, then forward to normal handler
+                        {
+                            let mut s = state.lock().expect("state mutex poisoned");
+                            if let Some(m) = s.create_swap_modal.as_mut() {
+                                m.completions.clear();
+                                m.completion_sel = None;
+                            }
+                        }
+                        handle_form_key(
+                            key,
+                            focused,
+                            state,
+                            &path_value,
+                            &size_value,
+                            &priority_value,
+                            size_unit,
+                        )
+                    }
+                };
+            }
+
+            // Tab on Path field triggers completion
+            if key.code == KeyCode::Tab && focused == CreateSwapField::Path {
+                let completions = compute_path_completions(&path_value);
+                return if completions.is_empty() {
+                    None
+                } else {
+                    Some(Action::CreateSwapSetCompletions(completions))
+                };
+            }
+
+            handle_form_key(
+                key,
+                focused,
+                state,
+                &path_value,
+                &size_value,
+                &priority_value,
+                size_unit,
+            )
+        }
+        "progress" => match key.code {
+            // TODO: disallow Esc once step 3 (file allocation) has started, to avoid
+            // leaving a partial pre-allocated file behind when the user cancels.
+            // Today, the background task keeps running after CloseCreateSwap and its
+            // StepUpdate actions are silently dropped, so the user has no indication
+            // that a partial file exists on disk.
+            KeyCode::Esc => {
+                let return_to_form = {
+                    let s = state.lock().expect("state mutex poisoned");
+                    if let Some(modal) = s.create_swap_modal.as_ref() {
+                        if let CreateSwapMode::Progress { steps } = &modal.mode {
+                            steps.iter().any(|s| {
+                                matches!(s.status, crate::create_swap::StepStatus::Error(_))
+                            })
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                };
+                if return_to_form {
+                    Some(Action::CreateSwapReturnToForm)
+                } else {
+                    Some(Action::CloseCreateSwap)
+                }
+            }
+            _ => None,
+        },
+        "confirm_activate" => match key.code {
+            KeyCode::Char('c') | KeyCode::Enter => Some(Action::CreateSwapSubmit {
+                activate_only: true,
+            }),
+            KeyCode::Esc => Some(Action::CloseCreateSwap),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn handle_form_key(
+    key: KeyEvent,
+    focused: crate::create_swap::CreateSwapField,
+    state: &Arc<Mutex<AppState>>,
+    path_value: &str,
+    size_value: &str,
+    priority_value: &str,
+    size_unit: crate::create_swap::SizeUnit,
+) -> Option<Action> {
+    use crate::create_swap::CreateSwapField;
+    match key.code {
+        KeyCode::Esc => Some(Action::CloseCreateSwap),
+        KeyCode::Up | KeyCode::Char('k')
+            if matches!(
+                focused,
+                CreateSwapField::SizeUnit
+                    | CreateSwapField::ActivateAfter
+                    | CreateSwapField::Submit
+            ) =>
+        {
+            Some(Action::CreateSwapFocusField(focused.prev()))
+        }
+        KeyCode::Down | KeyCode::Char('j')
+            if matches!(
+                focused,
+                CreateSwapField::SizeUnit
+                    | CreateSwapField::ActivateAfter
+                    | CreateSwapField::Submit
+            ) =>
+        {
+            Some(Action::CreateSwapFocusField(focused.next()))
+        }
+        KeyCode::Up => Some(Action::CreateSwapFocusField(focused.prev())),
+        KeyCode::Down => Some(Action::CreateSwapFocusField(focused.next())),
+        KeyCode::Char(' ') if focused == CreateSwapField::SizeUnit => {
+            Some(Action::CreateSwapToggleUnit)
+        }
+        KeyCode::Char(' ') if focused == CreateSwapField::ActivateAfter => {
+            Some(Action::CreateSwapToggleActivate)
+        }
+        KeyCode::Enter if focused == CreateSwapField::Submit => {
+            validate_and_submit(state, path_value, size_value, priority_value, size_unit)
+        }
+        _ => {
+            if matches!(
+                focused,
+                CreateSwapField::Path | CreateSwapField::Size | CreateSwapField::Priority
+            ) {
+                Some(Action::CreateSwapInputEvent(crossterm::event::Event::Key(
+                    key,
+                )))
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn validate_and_submit(
+    state: &Arc<Mutex<AppState>>,
+    path: &str,
+    size: &str,
+    priority: &str,
+    _unit: crate::create_swap::SizeUnit,
+) -> Option<Action> {
+    let err = |msg: &str| -> Option<Action> {
+        let mut s = state.lock().expect("state mutex poisoned");
+        if let Some(m) = s.create_swap_modal.as_mut() {
+            m.validation_error = Some(msg.to_string());
+        }
+        None
+    };
+
+    if path.trim().is_empty() {
+        return err("Path is required");
+    }
+    if !std::path::Path::new(path).is_absolute() {
+        return err("Path must be absolute");
+    }
+    let size_n: u64 = match size.trim().parse() {
+        Ok(n) => n,
+        Err(_) => return err("Size must be a positive integer"),
+    };
+    if size_n == 0 {
+        return err("Size must be greater than zero");
+    }
+    let prio_n: i32 = match priority.trim().parse() {
+        Ok(n) => n,
+        Err(_) => return err("Priority must be an integer between -1 and 32767"),
+    };
+    if !(-1..=32767).contains(&prio_n) {
+        return err("Priority must be an integer between -1 and 32767");
+    }
+
+    {
+        let mut s = state.lock().expect("state mutex poisoned");
+        if let Some(m) = s.create_swap_modal.as_mut() {
+            m.validation_error = None;
+        }
+    }
+    Some(Action::CreateSwapSubmit {
+        activate_only: false,
+    })
+}
+
+fn compute_path_completions(partial: &str) -> Vec<String> {
+    // TODO: this runs std::fs::read_dir on the Tokio executor thread. Local
+    // filesystems are sub-millisecond, but network mounts (NFS/CIFS on /home)
+    // can block the event loop for hundreds of milliseconds. Move to
+    // spawn_blocking if slow filesystems are reported.
+    let path = std::path::Path::new(partial);
+    let (dir, prefix) = if partial.ends_with('/') {
+        (path, "")
+    } else {
+        (
+            path.parent().unwrap_or(std::path::Path::new("/")),
+            path.file_name().and_then(|n| n.to_str()).unwrap_or(""),
+        )
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut results: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .map(|n| n.starts_with(prefix))
+                .unwrap_or(false)
+        })
+        .map(|e| {
+            let mut p = e.path().to_string_lossy().to_string();
+            if e.path().is_dir() {
+                p.push('/');
+            }
+            p
+        })
+        .collect();
+    results.sort();
+    results
 }
 
 pub fn next_sort_column(current: &SortColumn) -> SortColumn {
@@ -294,7 +640,7 @@ mod tests {
     #[test]
     fn global_quit_keys_work_from_any_tab() {
         let state = make_state();
-        for tab in [Tab::Overview, Tab::Processes, Tab::Devices, Tab::CreateSwap] {
+        for tab in [Tab::Overview, Tab::Processes, Tab::Devices] {
             let q = rk(
                 key(KeyCode::Char('q')),
                 &tab,
@@ -358,7 +704,7 @@ mod tests {
     #[test]
     fn number_keys_select_tabs() {
         let state = make_state();
-        for n in [1_usize, 2, 3, 4] {
+        for n in [1_usize, 2, 3] {
             let c = char::from_digit(n as u32, 10).unwrap();
             let action = rk(
                 key(KeyCode::Char(c)),
@@ -420,20 +766,96 @@ mod tests {
         assert!(matches!(action, Some(Action::EnterFilterMode)));
     }
 
-    #[test]
-    fn refresh_key_works_on_overview_tab() {
+    // ── ConfirmOffDelete kind selection ──────────────────────────────────
+
+    fn make_off_delete_state(active: bool, delete_file: bool) -> Arc<Mutex<AppState>> {
+        use crate::app::ConfirmOffDelete;
         let state = make_state();
+        {
+            let mut s = state.lock().unwrap();
+            s.confirm_off_delete = Some(ConfirmOffDelete {
+                path: "/swapfile".into(),
+                delete_file,
+                active,
+            });
+        }
+        state
+    }
+
+    #[test]
+    fn off_delete_inactive_delete_true_dispatches_delete_only() {
+        let state = make_off_delete_state(false, true);
         let action = rk(
-            key(KeyCode::Char('r')),
-            &Tab::Overview,
+            key(KeyCode::Char('c')),
+            &Tab::Devices,
             None,
             0,
-            false,
+            true,
             false,
             &SortColumn::Swap,
             &state,
         );
-        assert!(matches!(action, Some(Action::Refresh)));
+        assert!(
+            matches!(action, Some(Action::ExecuteDeviceOp { ref kind, .. }) if *kind == DeviceOpKind::DeleteOnly),
+            "expected DeleteOnly, got {action:?}"
+        );
+    }
+
+    #[test]
+    fn off_delete_active_delete_true_dispatches_off_and_delete() {
+        let state = make_off_delete_state(true, true);
+        let action = rk(
+            key(KeyCode::Char('c')),
+            &Tab::Devices,
+            None,
+            0,
+            true,
+            false,
+            &SortColumn::Swap,
+            &state,
+        );
+        assert!(
+            matches!(action, Some(Action::ExecuteDeviceOp { ref kind, .. }) if *kind == DeviceOpKind::OffAndDelete),
+            "expected OffAndDelete, got {action:?}"
+        );
+    }
+
+    #[test]
+    fn off_delete_active_delete_false_dispatches_off() {
+        let state = make_off_delete_state(true, false);
+        let action = rk(
+            key(KeyCode::Char('c')),
+            &Tab::Devices,
+            None,
+            0,
+            true,
+            false,
+            &SortColumn::Swap,
+            &state,
+        );
+        assert!(
+            matches!(action, Some(Action::ExecuteDeviceOp { ref kind, .. }) if *kind == DeviceOpKind::Off),
+            "expected Off, got {action:?}"
+        );
+    }
+
+    #[test]
+    fn off_delete_inactive_delete_false_cancels() {
+        let state = make_off_delete_state(false, false);
+        let action = rk(
+            key(KeyCode::Char('c')),
+            &Tab::Devices,
+            None,
+            0,
+            true,
+            false,
+            &SortColumn::Swap,
+            &state,
+        );
+        assert!(
+            matches!(action, Some(Action::CancelConfirmOffDelete)),
+            "expected CancelConfirmOffDelete, got {action:?}"
+        );
     }
 
     #[test]
@@ -450,5 +872,36 @@ mod tests {
             &state,
         );
         assert!(action.is_none());
+    }
+
+    #[test]
+    fn completions_for_root_contains_entries() {
+        // /tmp always exists on Linux
+        let results = compute_path_completions("/tmp");
+        // Should find entries starting with /tmp
+        assert!(results.iter().all(|p| p.starts_with("/tmp")));
+    }
+
+    #[test]
+    fn completions_for_nonexistent_dir_returns_empty() {
+        let results = compute_path_completions("/definitely_not_a_real_path_xyz/");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn completions_for_slash_returns_root_entries() {
+        let results = compute_path_completions("/");
+        assert!(!results.is_empty());
+        assert!(results.iter().all(|p| p.starts_with('/')));
+    }
+
+    #[test]
+    fn completions_dirs_end_with_slash() {
+        let results = compute_path_completions("/");
+        let dirs: Vec<_> = results.iter().filter(|p| p.ends_with('/')).collect();
+        assert!(
+            !dirs.is_empty(),
+            "root should contain at least one directory"
+        );
     }
 }

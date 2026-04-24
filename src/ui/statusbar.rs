@@ -13,7 +13,6 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
         ("q", "quit"),
         ("Tab", "next tab"),
         ("1-4", "switch tab"),
-        ("r", "refresh"),
         ("?", "help"),
     ];
 
@@ -33,7 +32,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
         })
         .collect();
 
-    if let Some(err) = &state.error_msg {
+    if let Some((err, _)) = &state.error_msg {
         spans.push(Span::styled(
             format!("  ⚠ {err}"),
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
