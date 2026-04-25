@@ -1200,10 +1200,9 @@ mod tests {
     // ── is_root ───────────────────────────────────────────────────────────────
 
     #[test]
-    fn is_root_field_exists_on_appstate() {
+    fn is_root_field_matches_actual_euid() {
         let state = AppState::new(make_caps());
-        // We're running tests as non-root, so expect false
-        assert!(!state.is_root);
+        assert_eq!(state.is_root, nix::unistd::geteuid().is_root());
     }
 
     #[test]

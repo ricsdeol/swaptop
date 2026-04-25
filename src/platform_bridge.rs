@@ -50,14 +50,17 @@ impl PlatformBridge {
                         activate_after,
                         activate_only,
                     } => {
-                        crate::platform::linux::create_swap::run_create_swap_steps(
-                            path,
-                            size_bytes,
-                            priority,
-                            activate_after,
-                            activate_only,
-                            action_tx.clone(),
-                        );
+                        let tx = action_tx.clone();
+                        std::thread::spawn(move || {
+                            crate::platform::linux::create_swap::run_create_swap_steps(
+                                path,
+                                size_bytes,
+                                priority,
+                                activate_after,
+                                activate_only,
+                                tx,
+                            );
+                        });
                     }
                     PlatformCommand::Shutdown => break,
                 }
@@ -316,5 +319,39 @@ mod tests {
         );
         bridge.send(PlatformCommand::Shutdown);
         drop(bridge);
+    }
+
+    #[test]
+    fn create_swap_does_not_block_collect() {
+        let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel();
+        let processes_active = Arc::new(AtomicBool::new(false));
+        let bridge = PlatformBridge::spawn_with_backend(
+            Box::new(MockBackend::healthy()),
+            action_tx,
+            processes_active,
+        );
+
+        bridge.send(PlatformCommand::CreateSwap {
+            path: "/tmp/nonexistent_swaptest".into(),
+            size_bytes: 1024,
+            priority: -1,
+            activate_after: false,
+            activate_only: false,
+        });
+        bridge.send(PlatformCommand::Collect);
+        bridge.send(PlatformCommand::Shutdown);
+        drop(bridge);
+
+        let mut found_snapshot = false;
+        while let Some(action) = action_rx.blocking_recv() {
+            if matches!(action, Action::UpdateSnapshot(_)) {
+                found_snapshot = true;
+                break;
+            }
+        }
+        assert!(
+            found_snapshot,
+            "Collect should not be blocked by CreateSwap"
+        );
     }
 }
