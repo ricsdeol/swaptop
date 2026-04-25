@@ -24,7 +24,6 @@ pub enum OpStatus {
 #[derive(Debug, Clone)]
 pub struct DeviceOp {
     pub path: PathBuf,
-    #[allow(dead_code)] // stored for completeness; UI may display this in a future pass
     pub kind: DeviceOpKind,
     pub status: OpStatus,
 }
