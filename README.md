@@ -191,7 +191,12 @@ flowchart TB
 ```
 src/
 ├── main.rs             # tokio::select! event loop — orchestrates everything
-├── app.rs              # AppState + handle_action() reducer (pure, no I/O)
+├── app/
+│   ├── mod.rs          # AppState + handle_action() dispatcher
+│   ├── snapshot.rs     # UpdateSnapshot orchestrator
+│   ├── devices.rs      # Device ops + confirmation modals
+│   ├── processes.rs    # Sortable/filterable process table state
+│   └── create_swap.rs  # Wizard form state handlers
 ├── actions.rs          # Action enum + DeviceOpKind, OpStatus, SortColumn
 ├── platform_bridge.rs  # Dedicated thread: owns PlatformProvider, processes commands
 ├── input.rs            # resolve_key() — pure (KeyEvent, &KeyContext) → Option<Action>

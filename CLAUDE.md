@@ -37,7 +37,7 @@ User keypress
 |-------|----------|---------------|
 | `ui/` | read `&AppState` | mutate state, call platform, send commands |
 | `input.rs` | return `Option<Action>` | lock mutex, do I/O, call platform |
-| `app.rs` (reducer) | mutate `AppState` | do I/O, call platform, send commands |
+| `app/` (reducer) | mutate `AppState` | do I/O, call platform, send commands |
 | `main.rs` | lock state, send `PlatformCommand`, dispatch `Action` | call `PlatformProvider` directly |
 | `platform_bridge.rs` | call `PlatformProvider`, send `Action` | read `AppState`, touch UI |
 | `platform/` | system calls, `/proc`, `nix` | know about `Action`, `AppState`, UI |
@@ -50,7 +50,12 @@ User keypress
 - **`platform/types.rs`** — `SwapInfo`, `SwapDevice`, `ProcessRow`, `MemSnapshot`, `StepStatus`, `CreateSwapProgress`, `parse_swap_header`
 - **`platform/factory.rs`** — `detect() -> Box<dyn PlatformProvider>` via `#[cfg(target_os)]`
 - **`platform/linux/`** — `LinuxBackend` impl, `proc_reader.rs`, `create_swap.rs` (step runner)
-- **`app.rs`** — `AppState` struct + `handle_action()` reducer. Pure — no I/O. All mutations via `Action` enum.
+- **`app/`** — `AppState` struct + `handle_action()` reducer (pure, no I/O). Split by domain:
+  - `mod.rs` — struct, constructor, dispatcher, cross-cutting helpers
+  - `snapshot.rs` — `UpdateSnapshot` orchestrator with domain callbacks
+  - `devices.rs` — device navigation, operations, confirmations
+  - `processes.rs` — table navigation, sorting, filtering
+  - `create_swap.rs` — swap file wizard modal handlers
 - **`actions.rs`** — `Action` enum (all state mutations) + `DeviceOpKind`, `OpStatus`, `SortColumn`
 - **`input.rs`** — `resolve_key(KeyEvent, &KeyContext) -> Option<Action>`. Pure function, zero mutex locks.
 - **`create_swap.rs`** — wizard state types: `CreateSwapModal`, `CreateSwapField`, `SizeUnit`, `CreateSwapStep`. UI state only — no I/O.

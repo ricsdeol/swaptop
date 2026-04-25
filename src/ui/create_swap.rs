@@ -1,5 +1,3 @@
-//! Phase 5 — Create swap modal renderer. Overlays the Devices tab area.
-
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
