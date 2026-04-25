@@ -8,7 +8,7 @@ use sysinfo::System;
 
 use super::swap_discovery::discover_inactive_swap_files;
 use super::{
-    Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo, SwapKind, parse_swap_header,
+    Capabilities, PlatformProvider, ProcessRow, SwapDevice, SwapInfo, SwapKind, parse_swap_header,
 };
 use proc_reader::ProcReader;
 
@@ -34,7 +34,7 @@ impl LinuxBackend {
     }
 }
 
-impl SwapBackend for LinuxBackend {
+impl PlatformProvider for LinuxBackend {
     fn system_ram(&mut self) -> Result<SwapInfo> {
         self.sys.refresh_memory();
         Ok(SwapInfo::new(
@@ -115,7 +115,7 @@ impl SwapBackend for LinuxBackend {
     fn swap_reset(&self, device: &Path) -> Result<()> {
         self.swap_off(device)?;
         // NOTE: This runs inside spawn_blocking, so std::thread::sleep is
-        // appropriate here. The SwapBackend trait is synchronous by design.
+        // appropriate here. The PlatformProvider trait is synchronous by design.
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.swap_on(device)
     }
@@ -125,6 +125,28 @@ impl SwapBackend for LinuxBackend {
             can_swap_on: true,
             has_per_process: true,
         }
+    }
+
+    fn create_swap_file(
+        &self,
+        path: std::path::PathBuf,
+        size_bytes: u64,
+        priority: i16,
+        activate_after: bool,
+        activate_only: bool,
+    ) -> std::sync::mpsc::Receiver<super::CreateSwapProgress> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            create_swap::run_create_swap_steps(
+                path,
+                size_bytes,
+                priority,
+                activate_after,
+                activate_only,
+                &tx,
+            );
+        });
+        rx
     }
 }
 

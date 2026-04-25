@@ -77,6 +77,22 @@ pub struct MemSnapshot {
     pub processes: Vec<ProcessRow>,
 }
 
+/// Status of each create-swap step. Cannot be `Copy` due to `Error(String)` payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StepStatus {
+    Pending,
+    Running,
+    Done,
+    Error(String),
+}
+
+/// Progress events emitted by the platform backend during create-swap.
+#[derive(Debug, Clone)]
+pub enum CreateSwapProgress {
+    StepUpdate { index: usize, status: StepStatus },
+    ConfirmActivateOnly { path: PathBuf, size_bytes: u64 },
+}
+
 /// Check the first 4096 bytes for swap header (`SWAPSPACE2` or `SWAP-SPACE`)
 /// at offset 4086..4096. Returns the file size if the header is valid.
 pub fn parse_swap_header(buf: &[u8], size_bytes: u64) -> Option<u64> {

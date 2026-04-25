@@ -2,7 +2,7 @@ use std::path::Path;
 
 use color_eyre::Result;
 
-use super::{Capabilities, SwapBackend, SwapDevice, SwapInfo};
+use super::{Capabilities, PlatformProvider, SwapDevice, SwapInfo};
 
 pub struct MacosBackend;
 
@@ -12,7 +12,7 @@ impl MacosBackend {
     }
 }
 
-impl SwapBackend for MacosBackend {
+impl PlatformProvider for MacosBackend {
     fn system_ram(&mut self) -> Result<SwapInfo> {
         color_eyre::eyre::bail!("macOS backend not yet implemented")
     }

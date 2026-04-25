@@ -139,7 +139,13 @@ fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
 fn status_cell<'a>(dev: &crate::platform::SwapDevice, state: &AppState) -> Cell<'a> {
     if let Some(op) = state.device_op.as_ref().filter(|op| op.path == dev.path) {
         return match &op.status {
-            OpStatus::Running => Cell::from("⏳ ...").style(Style::default().fg(Color::Yellow)),
+            OpStatus::Running => {
+                let elapsed = state
+                    .device_op_started
+                    .map(|s| s.elapsed().as_secs())
+                    .unwrap_or(0);
+                Cell::from(format!("⏳ {elapsed}s")).style(Style::default().fg(Color::Yellow))
+            }
             OpStatus::Done => Cell::from("✓ OK").style(Style::default().fg(Color::Green)),
             OpStatus::Error(_) => Cell::from("✗ ERROR").style(Style::default().fg(Color::Red)),
         };

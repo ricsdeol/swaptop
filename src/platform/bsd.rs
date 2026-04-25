@@ -2,7 +2,7 @@ use std::path::Path;
 
 use color_eyre::Result;
 
-use super::{Capabilities, SwapBackend, SwapDevice, SwapInfo};
+use super::{Capabilities, PlatformProvider, SwapDevice, SwapInfo};
 
 pub struct BsdBackend;
 
@@ -12,7 +12,7 @@ impl BsdBackend {
     }
 }
 
-impl SwapBackend for BsdBackend {
+impl PlatformProvider for BsdBackend {
     fn system_ram(&mut self) -> Result<SwapInfo> {
         color_eyre::eyre::bail!("BSD backend not yet implemented")
     }

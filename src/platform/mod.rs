@@ -14,7 +14,7 @@ pub use types::*;
 use color_eyre::Result;
 use std::path::Path;
 
-pub trait SwapBackend: Send + Sync {
+pub trait PlatformProvider: Send + Sync {
     fn system_swap(&mut self) -> Result<SwapInfo>;
     fn system_ram(&mut self) -> Result<SwapInfo>;
     fn swap_devices(&mut self) -> Result<Vec<SwapDevice>>;
@@ -28,4 +28,15 @@ pub trait SwapBackend: Send + Sync {
         self.swap_on(device)
     }
     fn capabilities(&self) -> Capabilities;
+    fn create_swap_file(
+        &self,
+        _path: std::path::PathBuf,
+        _size_bytes: u64,
+        _priority: i16,
+        _activate_after: bool,
+        _activate_only: bool,
+    ) -> std::sync::mpsc::Receiver<CreateSwapProgress> {
+        let (_tx, rx) = std::sync::mpsc::channel();
+        rx
+    }
 }

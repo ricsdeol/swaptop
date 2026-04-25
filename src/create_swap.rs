@@ -5,6 +5,8 @@
 
 use std::path::PathBuf;
 
+use crate::platform::StepStatus;
+
 /// Operating mode of the create-swap modal.
 #[derive(Debug)]
 pub enum CreateSwapMode {
@@ -100,15 +102,6 @@ impl CreateSwapStep {
             status: StepStatus::Pending,
         }
     }
-}
-
-/// Status of each step. Cannot be `Copy` due to `Error(String)` payload.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StepStatus {
-    Pending,
-    Running,
-    Done,
-    Error(String),
 }
 
 /// Full modal state stored in `AppState`.

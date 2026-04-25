@@ -7,7 +7,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::AppState;
-use crate::create_swap::{CreateSwapField, CreateSwapModal, CreateSwapMode, StepStatus};
+use crate::create_swap::{CreateSwapField, CreateSwapModal, CreateSwapMode};
+use crate::platform::StepStatus;
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     let Some(modal) = state.create_swap_modal.as_ref() else {
