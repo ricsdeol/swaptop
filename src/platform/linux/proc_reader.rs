@@ -74,7 +74,13 @@ impl ProcReader {
                 Err(_) => continue,
             };
 
-            let ticks = parse_stat_cpu_ticks(&stat_content).unwrap_or(0);
+            let (ticks, state, threads) = match parse_stat_cpu_ticks(&stat_content) {
+                Some(t) => {
+                    let (st, th) = parse_stat_threads(&stat_content).unwrap_or(('?', 1));
+                    (t, st, th)
+                }
+                None => continue,
+            };
             new_ticks.insert(pid, ticks);
 
             let cpu_pct = if delta_secs > 0.0 {
@@ -101,9 +107,8 @@ impl ProcReader {
                 rss: info.rss,
                 swap: info.swap,
                 cpu_pct,
-                // TODO(Task 2): parse real threads and status from /proc/{pid}/stat
-                threads: 1,  // placeholder
-                status: 'S', // placeholder
+                threads: threads as u32,
+                status: state,
             });
         }
 
@@ -177,6 +182,14 @@ fn parse_stat_cpu_ticks(content: &str) -> Option<u64> {
     let utime: u64 = fields.get(11)?.parse().ok()?;
     let stime: u64 = fields.get(12)?.parse().ok()?;
     Some(utime + stime)
+}
+
+fn parse_stat_threads(content: &str) -> Option<(char, u64)> {
+    let after_comm = content.rfind(')')? + 1;
+    let fields: Vec<&str> = content[after_comm..].split_whitespace().collect();
+    let state = fields.first()?.chars().next()?;
+    let num_threads = fields.get(17)?.parse().ok()?;
+    Some((state, num_threads))
 }
 
 #[cfg(test)]
@@ -293,6 +306,22 @@ VmSwap:\t       0 kB
         assert!(!is_kernel_thread("kswapd0"));
         assert!(!is_kernel_thread("[incomplete"));
         assert!(!is_kernel_thread("trailing]"));
+    }
+
+    // ── parse_stat_threads tests ────────────────────────────────────────────
+
+    #[test]
+    fn parse_stat_threads_extracts_state_and_num_threads() {
+        let content = "1234 (firefox) S 1000 1234 1234 0 -1 4194304 \
+                       1000 0 100 0 54321 12345 0 0 20 0 4 0 1000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0";
+        let (state, threads) = parse_stat_threads(content).unwrap();
+        assert_eq!(state, 'S');
+        assert_eq!(threads, 4);
+    }
+
+    #[test]
+    fn parse_stat_threads_returns_none_for_garbage() {
+        assert!(parse_stat_threads("not a stat line").is_none());
     }
 
     mod proptests {
