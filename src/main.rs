@@ -22,7 +22,7 @@ mod ui;
 use actions::Action;
 use app::{AppState, Tab};
 use create_swap::CreateSwapMode;
-use platform::MemSnapshot;
+use platform::{MemSnapshot, ProcessRow};
 use platform_bridge::{PlatformBridge, PlatformCommand};
 
 #[tokio::main]
@@ -121,7 +121,37 @@ async fn run(
                         input::KeyContext::from_state(&s)
                     };
 
+                    let selected_process_pid = {
+                        let s = state.lock().expect("state mutex poisoned");
+                        let lower = s.filter_text.to_lowercase();
+                        let visible: Vec<&ProcessRow> = if lower.is_empty() {
+                            s.processes.iter().collect()
+                        } else {
+                            s.processes.iter().filter(|p| {
+                                p.name.to_lowercase().contains(&lower)
+                                    || p.exe_path.as_ref().is_some_and(|e| e.to_lowercase().contains(&lower))
+                            }).collect()
+                        };
+                        let clamped = s.selected_row.min(visible.len().saturating_sub(1));
+                        visible.get(clamped).map(|p| p.pid)
+                    };
+
                     let action = input::resolve_key(key, &ctx);
+
+                    let action = match action {
+                        Some(Action::OpenProcessDetail { .. }) => {
+                            selected_process_pid.map(|pid| Action::OpenProcessDetail { pid })
+                        }
+                        other => other,
+                    };
+
+                    let action = match action {
+                        Some(Action::KillProcess { pid }) => {
+                            bridge.send(PlatformCommand::KillProcess { pid });
+                            None
+                        }
+                        other => other,
+                    };
 
                     // Extract info before consuming action
                     let device_op_cmd = if let Some(Action::ExecuteDeviceOp { ref path, ref kind }) = action {
