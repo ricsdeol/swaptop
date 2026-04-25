@@ -117,23 +117,23 @@ async fn run(
             Some(Ok(event)) = events.next().fuse() => {
                 if let CrosstermEvent::Key(key) = event {
                     let ctx = {
-                        let s = state.lock().expect("state mutex poisoned");
-                        input::KeyContext::from_state(&s)
+                        let locked_state = state.lock().expect("state mutex poisoned");
+                        input::KeyContext::from_state(&locked_state)
                     };
 
                     let selected_process_pid = {
-                        let s = state.lock().expect("state mutex poisoned");
-                        let lower = s.filter_text.to_lowercase();
+                        let locked_state = state.lock().expect("state mutex poisoned");
+                        let lower = locked_state.filter_text.to_lowercase();
                         let visible: Vec<&ProcessRow> = if lower.is_empty() {
-                            s.processes.iter().collect()
+                            locked_state.processes.iter().collect()
                         } else {
-                            s.processes.iter().filter(|p| {
-                                p.name.to_lowercase().contains(&lower)
-                                    || p.exe_path.as_ref().is_some_and(|e| e.to_lowercase().contains(&lower))
+                            locked_state.processes.iter().filter(|process| {
+                                process.name.to_lowercase().contains(&lower)
+                                    || process.exe_path.as_ref().is_some_and(|path| path.to_lowercase().contains(&lower))
                             }).collect()
                         };
-                        let clamped = s.selected_row.min(visible.len().saturating_sub(1));
-                        visible.get(clamped).map(|p| p.pid)
+                        let clamped = locked_state.selected_row.min(visible.len().saturating_sub(1));
+                        visible.get(clamped).map(|process| process.pid)
                     };
 
                     let action = input::resolve_key(key, &ctx);

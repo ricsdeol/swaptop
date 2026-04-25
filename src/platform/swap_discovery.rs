@@ -58,11 +58,13 @@ pub(crate) fn discover_inactive_swap_files(
             if active_paths.contains(&path) {
                 continue;
             }
-            let name = match path.file_name().and_then(|n| n.to_str()) {
-                Some(n) => n,
+            let name = match path.file_name().and_then(|filename| filename.to_str()) {
+                Some(filename) => filename,
                 None => continue,
             };
-            if patterns.iter().any(|p| matches_pattern(name, p))
+            if patterns
+                .iter()
+                .any(|pattern| matches_pattern(name, pattern))
                 && let Some(dev) = probe_swap_file(&path)
             {
                 devices.push(dev);
@@ -198,7 +200,7 @@ mod tests {
         let dirs: &[(&str, &[&str])] = &[(dir.to_str().unwrap(), &["swap*"])];
         let found = discover_inactive_swap_files(&active, dirs);
 
-        assert!(found.iter().any(|d| d.path == path));
+        assert!(found.iter().any(|device| device.path == path));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -220,7 +222,7 @@ mod tests {
         let dirs: &[(&str, &[&str])] = &[(dir.to_str().unwrap(), &["swap*"])];
         let found = discover_inactive_swap_files(&active, dirs);
 
-        assert!(!found.iter().any(|d| d.path == path));
+        assert!(!found.iter().any(|device| device.path == path));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

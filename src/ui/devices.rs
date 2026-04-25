@@ -79,8 +79,8 @@ fn render_header(f: &mut Frame, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         ),
     ]);
-    let t = Table::new(vec![header], column_widths()).block(Block::default());
-    f.render_widget(t, area);
+    let table_header = Table::new(vec![header], column_widths()).block(Block::default());
+    f.render_widget(table_header, area);
 }
 
 fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
@@ -88,25 +88,25 @@ fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
         .devices
         .iter()
         .enumerate()
-        .map(|(i, dev)| {
-            let status_cell = status_cell(dev, state);
-            let percent = if dev.total > 0 {
-                dev.used as f64 / dev.total as f64 * 100.0
+        .map(|(index, device)| {
+            let status_cell = status_cell(device, state);
+            let percent = if device.total > 0 {
+                device.used as f64 / device.total as f64 * 100.0
             } else {
                 0.0
             };
 
             let row = Row::new(vec![
-                Cell::from(dev.path.to_string_lossy().to_string()),
-                Cell::from(dev.kind.to_string()),
-                Cell::from(human_bytes::human_bytes(dev.total as f64)),
-                Cell::from(human_bytes::human_bytes(dev.used as f64)),
+                Cell::from(device.path.to_string_lossy().to_string()),
+                Cell::from(device.kind.to_string()),
+                Cell::from(human_bytes::human_bytes(device.total as f64)),
+                Cell::from(human_bytes::human_bytes(device.used as f64)),
                 Cell::from(format!("{percent:.0}%")),
-                Cell::from(format!("{}", dev.priority)),
+                Cell::from(format!("{}", device.priority)),
                 status_cell,
             ]);
 
-            if i == state.selected_dev {
+            if index == state.selected_dev {
                 row.style(
                     Style::default()
                         .bg(Color::DarkGray)
