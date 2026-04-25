@@ -188,6 +188,7 @@ impl AppState {
     }
 }
 
+mod devices;
 mod snapshot;
 
 #[cfg(test)]
