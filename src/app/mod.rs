@@ -240,6 +240,8 @@ pub(crate) mod test_helpers {
             rss: 0,
             swap,
             cpu_pct: 0.0,
+            threads: 1,
+            status: 'S',
         }
     }
 }

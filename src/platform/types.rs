@@ -52,6 +52,7 @@ impl std::fmt::Display for SwapKind {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // TODO: remove after Tasks 2-11 wire threads/status
 pub struct ProcessRow {
     pub pid: u32,
     pub name: String,
@@ -60,6 +61,8 @@ pub struct ProcessRow {
     pub rss: u64,
     pub swap: u64,
     pub cpu_pct: f32,
+    pub threads: u32,
+    pub status: char,
 }
 
 #[derive(Debug, Clone)]

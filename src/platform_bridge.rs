@@ -163,6 +163,8 @@ mod tests {
                     rss: 1024,
                     swap: 512,
                     cpu_pct: 0.5,
+                    threads: 1,
+                    status: 'S',
                 }],
                 fail: false,
             }

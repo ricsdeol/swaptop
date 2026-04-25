@@ -101,6 +101,9 @@ impl ProcReader {
                 rss: info.rss,
                 swap: info.swap,
                 cpu_pct,
+                // TODO(Task 2): parse real threads and status from /proc/{pid}/stat
+                threads: 1,  // placeholder
+                status: 'S', // placeholder
             });
         }
 
