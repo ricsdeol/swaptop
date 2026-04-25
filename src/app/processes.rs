@@ -191,4 +191,18 @@ mod tests {
         state.filter_text = "fire".to_string();
         assert_eq!(state.filtered_len(), 1);
     }
+
+    #[test]
+    fn filtered_len_matches_by_exe_path() {
+        let mut state = AppState::new(make_caps());
+        let mut snap = make_snapshot();
+        let mut firefox = make_process(1, "firefox", 0);
+        firefox.exe_path = Some("/opt/firefox/firefox".into());
+        let mut bash = make_process(2, "bash", 0);
+        bash.exe_path = Some("/bin/bash".into());
+        snap.processes = vec![firefox, bash];
+        state.handle_action(Action::UpdateSnapshot(snap));
+        state.filter_text = "/opt/firefox".to_string();
+        assert_eq!(state.filtered_len(), 1);
+    }
 }

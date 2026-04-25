@@ -377,10 +377,11 @@ fn compute_path_completions(partial: &str) -> Vec<String> {
 pub fn next_sort_column(current: &SortColumn) -> SortColumn {
     match current {
         SortColumn::Swap => SortColumn::Cpu,
-        SortColumn::Cpu => SortColumn::Rss,
-        SortColumn::Rss => SortColumn::Pid,
+        SortColumn::Cpu => SortColumn::Pid,
         SortColumn::Pid => SortColumn::Name,
-        SortColumn::Name | SortColumn::User => SortColumn::Swap,
+        SortColumn::Name => SortColumn::User,
+        SortColumn::User => SortColumn::Rss,
+        SortColumn::Rss => SortColumn::Swap,
     }
 }
 
@@ -443,15 +444,11 @@ mod tests {
     #[test]
     fn sort_column_cycles_through_all_columns() {
         assert_eq!(next_sort_column(&SortColumn::Swap), SortColumn::Cpu);
-        assert_eq!(next_sort_column(&SortColumn::Cpu), SortColumn::Rss);
-        assert_eq!(next_sort_column(&SortColumn::Rss), SortColumn::Pid);
+        assert_eq!(next_sort_column(&SortColumn::Cpu), SortColumn::Pid);
         assert_eq!(next_sort_column(&SortColumn::Pid), SortColumn::Name);
-        assert_eq!(next_sort_column(&SortColumn::Name), SortColumn::Swap);
-    }
-
-    #[test]
-    fn user_column_falls_back_to_swap() {
-        assert_eq!(next_sort_column(&SortColumn::User), SortColumn::Swap);
+        assert_eq!(next_sort_column(&SortColumn::Name), SortColumn::User);
+        assert_eq!(next_sort_column(&SortColumn::User), SortColumn::Rss);
+        assert_eq!(next_sort_column(&SortColumn::Rss), SortColumn::Swap);
     }
 
     // ── Filter mode ──────────────────────────────────────────────────────

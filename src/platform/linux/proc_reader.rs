@@ -89,10 +89,14 @@ impl ProcReader {
             };
 
             let user = self.resolve_user(info.uid);
+            let exe_path = std::fs::read_link(format!("/proc/{pid}/exe"))
+                .ok()
+                .map(|p| p.to_string_lossy().to_string());
 
             rows.push(ProcessRow {
                 pid,
                 name: info.name,
+                exe_path,
                 user,
                 rss: info.rss,
                 swap: info.swap,

@@ -158,6 +158,7 @@ mod tests {
                 processes: vec![ProcessRow {
                     pid: 1,
                     name: "init".into(),
+                    exe_path: None,
                     user: "root".into(),
                     rss: 1024,
                     swap: 512,
