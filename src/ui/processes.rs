@@ -3,7 +3,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
 };
 
@@ -139,17 +139,37 @@ fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
     )
     .height(1);
 
+    let selected = state.selected_row.min(visible.len().saturating_sub(1));
+
     let rows: Vec<Row> = visible
         .iter()
-        .map(|p| {
+        .enumerate()
+        .map(|(idx, p)| {
+            let is_selected = idx == selected;
             let swap_cell = if has_per_process {
                 Cell::from(format!("{:>10}", human_bytes(p.swap as f64)))
             } else {
                 Cell::from(format!("{:>10}", "—")).style(Style::default().fg(Color::DarkGray))
             };
+
+            let name_cell = if let Some(ref exe) = p.exe_path {
+                let path_color = if is_selected {
+                    Color::Gray
+                } else {
+                    Color::DarkGray
+                };
+                Cell::from(Text::from(Line::from(vec![
+                    Span::raw(&p.name),
+                    Span::raw(" "),
+                    Span::styled(exe, Style::default().fg(path_color)),
+                ])))
+            } else {
+                Cell::from(p.name.clone())
+            };
+
             Row::new(vec![
                 Cell::from(format!("{:>6}", p.pid)),
-                Cell::from(p.name.clone()),
+                name_cell,
                 Cell::from(p.user.clone()),
                 Cell::from(format!("{:>10}", human_bytes(p.rss as f64))),
                 swap_cell,

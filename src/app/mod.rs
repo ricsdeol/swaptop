@@ -230,6 +230,7 @@ pub(crate) mod test_helpers {
         ProcessRow {
             pid,
             name: name.to_string(),
+            exe_path: None,
             user: "user".to_string(),
             rss: 0,
             swap,

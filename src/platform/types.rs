@@ -55,6 +55,7 @@ impl std::fmt::Display for SwapKind {
 pub struct ProcessRow {
     pub pid: u32,
     pub name: String,
+    pub exe_path: Option<String>,
     pub user: String,
     pub rss: u64,
     pub swap: u64,
