@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::actions::{Action, DeviceOpKind, SortColumn};
 use crate::app::{AppState, Tab};
-use crate::create_swap::{CreateSwapField, CreateSwapMode, SizeUnit, StepStatus};
+use crate::create_swap::{CreateSwapField, CreateSwapMode, StepStatus};
 use crate::platform::SwapKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,8 +21,6 @@ pub struct ConfirmOffDeleteContext {
 }
 
 pub struct DeviceContext {
-    #[allow(dead_code)] // populated by from_state; not consumed by current key logic
-    pub selected_dev: usize,
     pub has_devices: bool,
     pub confirm_action: Option<DeviceOpKind>,
     pub selected_path: Option<PathBuf>,
@@ -35,12 +33,6 @@ pub struct CreateSwapContext {
     pub mode: CreateSwapModeKind,
     pub focused_field: Option<CreateSwapField>,
     pub path_value: String,
-    #[allow(dead_code)] // populated by from_state; validation now in reducer
-    pub size_value: String,
-    #[allow(dead_code)] // populated by from_state; validation now in reducer
-    pub priority_value: String,
-    #[allow(dead_code)] // populated by from_state; validation now in reducer
-    pub size_unit: SizeUnit,
     pub completions_showing: bool,
     pub has_error_step: bool,
 }
@@ -57,7 +49,6 @@ pub struct KeyContext {
 impl KeyContext {
     pub fn from_state(s: &AppState) -> Self {
         let device = DeviceContext {
-            selected_dev: s.selected_dev,
             has_devices: !s.devices.is_empty(),
             confirm_action: s.confirm_action.clone(),
             selected_path: s.devices.get(s.selected_dev).map(|d| d.path.clone()),
@@ -96,9 +87,6 @@ impl KeyContext {
                 mode,
                 focused_field,
                 path_value: modal.path_input.value().to_string(),
-                size_value: modal.size_input.value().to_string(),
-                priority_value: modal.priority_input.value().to_string(),
-                size_unit: modal.size_unit,
                 completions_showing: !modal.completions.is_empty(),
                 has_error_step,
             }
@@ -412,7 +400,6 @@ mod tests {
     #[allow(dead_code)]
     fn default_device() -> DeviceContext {
         DeviceContext {
-            selected_dev: 0,
             has_devices: false,
             confirm_action: None,
             selected_path: None,
@@ -426,7 +413,6 @@ mod tests {
         k: KeyEvent,
         tab: Tab,
         confirm: Option<DeviceOpKind>,
-        sel: usize,
         devs: bool,
         filter: bool,
         sort: SortColumn,
@@ -439,7 +425,6 @@ mod tests {
                 sort_col: sort,
                 is_root: false,
                 device: DeviceContext {
-                    selected_dev: sel,
                     has_devices: devs,
                     confirm_action: confirm,
                     selected_path: if devs { Some("/dev/sda2".into()) } else { None },
@@ -476,7 +461,6 @@ mod tests {
             key(KeyCode::Char('a')),
             Tab::Processes,
             None,
-            0,
             false,
             true,
             SortColumn::Swap,
@@ -490,7 +474,6 @@ mod tests {
             key(KeyCode::Esc),
             Tab::Processes,
             None,
-            0,
             false,
             true,
             SortColumn::Swap,
@@ -504,7 +487,6 @@ mod tests {
             key(KeyCode::Enter),
             Tab::Processes,
             None,
-            0,
             false,
             true,
             SortColumn::Swap,
@@ -518,7 +500,6 @@ mod tests {
             key(KeyCode::Backspace),
             Tab::Processes,
             None,
-            0,
             false,
             true,
             SortColumn::Swap,
@@ -535,7 +516,6 @@ mod tests {
                 key(KeyCode::Char('q')),
                 tab.clone(),
                 None,
-                0,
                 false,
                 false,
                 SortColumn::Swap,
@@ -545,15 +525,7 @@ mod tests {
                 "q should quit from {tab:?}"
             );
 
-            let ctrl_c = rk(
-                ctrl('c'),
-                tab.clone(),
-                None,
-                0,
-                false,
-                false,
-                SortColumn::Swap,
-            );
+            let ctrl_c = rk(ctrl('c'), tab.clone(), None, false, false, SortColumn::Swap);
             assert!(
                 matches!(ctrl_c, Some(Action::Quit)),
                 "Ctrl+C should quit from {tab:?}"
@@ -567,7 +539,6 @@ mod tests {
             key(KeyCode::Tab),
             Tab::Overview,
             None,
-            0,
             false,
             false,
             SortColumn::Swap,
@@ -577,7 +548,6 @@ mod tests {
             key(KeyCode::BackTab),
             Tab::Overview,
             None,
-            0,
             false,
             false,
             SortColumn::Swap,
@@ -593,7 +563,6 @@ mod tests {
                 key(KeyCode::Char(c)),
                 Tab::Overview,
                 None,
-                0,
                 false,
                 false,
                 SortColumn::Swap,
@@ -610,7 +579,6 @@ mod tests {
             key(KeyCode::Char('j')),
             Tab::Processes,
             None,
-            0,
             false,
             false,
             SortColumn::Swap,
@@ -620,7 +588,6 @@ mod tests {
             key(KeyCode::Char('j')),
             Tab::Overview,
             None,
-            0,
             false,
             false,
             SortColumn::Swap,
@@ -634,7 +601,6 @@ mod tests {
             key(KeyCode::Char('/')),
             Tab::Processes,
             None,
-            0,
             false,
             false,
             SortColumn::Swap,
@@ -651,7 +617,6 @@ mod tests {
             sort_col: SortColumn::Swap,
             is_root: false,
             device: DeviceContext {
-                selected_dev: 0,
                 has_devices: true,
                 confirm_action: None,
                 selected_path: None,
@@ -713,7 +678,6 @@ mod tests {
             key(KeyCode::F(5)),
             Tab::Overview,
             None,
-            0,
             false,
             false,
             SortColumn::Swap,

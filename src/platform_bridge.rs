@@ -41,7 +41,7 @@ impl PlatformBridge {
                         Self::handle_collect(&mut *backend, &action_tx, &processes_active);
                     }
                     PlatformCommand::DeviceOp { path, kind } => {
-                        Self::handle_device_op(&*backend, &action_tx, path, kind);
+                        Self::handle_device_op(&mut *backend, &action_tx, path, kind);
                     }
                     PlatformCommand::CreateSwap {
                         path,
@@ -103,7 +103,7 @@ impl PlatformBridge {
     }
 
     fn handle_device_op(
-        backend: &dyn SwapBackend,
+        backend: &mut dyn SwapBackend,
         action_tx: &UnboundedSender<Action>,
         path: PathBuf,
         kind: DeviceOpKind,
