@@ -190,6 +190,7 @@ impl AppState {
 
 mod devices;
 mod snapshot;
+mod processes;
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
