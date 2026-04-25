@@ -120,6 +120,13 @@ impl PlatformProvider for LinuxBackend {
         self.swap_on(device)
     }
 
+    fn kill_process(&self, pid: u32) -> color_eyre::Result<()> {
+        use nix::sys::signal::{kill, Signal};
+        use nix::unistd::Pid;
+        kill(Pid::from_raw(pid as i32), Signal::SIGTERM)
+            .map_err(|e| color_eyre::eyre::eyre!("kill failed: {e}"))
+    }
+
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             can_swap_on: true,

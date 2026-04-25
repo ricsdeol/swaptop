@@ -28,6 +28,9 @@ impl PlatformProvider for MacosBackend {
     fn swap_off(&self, _device: &Path) -> Result<()> {
         color_eyre::eyre::bail!("controlled by dynamic_pager on macOS")
     }
+    fn kill_process(&self, _pid: u32) -> Result<()> {
+        Err(color_eyre::eyre::eyre!("kill_process not supported on macOS"))
+    }
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             can_swap_on: false,

@@ -206,6 +206,9 @@ mod tests {
         fn swap_off(&self, _device: &Path) -> color_eyre::Result<()> {
             Ok(())
         }
+        fn kill_process(&self, _pid: u32) -> color_eyre::Result<()> {
+            Ok(())
+        }
         fn capabilities(&self) -> Capabilities {
             Capabilities {
                 can_swap_on: true,
