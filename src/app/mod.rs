@@ -86,7 +86,12 @@ impl AppState {
             let lower = self.filter_text.to_lowercase();
             self.processes
                 .iter()
-                .filter(|p| p.name.to_lowercase().contains(&lower))
+                .filter(|p| {
+                    p.name.to_lowercase().contains(&lower)
+                        || p.exe_path
+                            .as_ref()
+                            .is_some_and(|e| e.to_lowercase().contains(&lower))
+                })
                 .count()
         }
     }

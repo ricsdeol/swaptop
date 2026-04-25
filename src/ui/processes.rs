@@ -114,7 +114,12 @@ fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
         state
             .processes
             .iter()
-            .filter(|p| p.name.to_lowercase().contains(&lower))
+            .filter(|p| {
+                p.name.to_lowercase().contains(&lower)
+                    || p.exe_path
+                        .as_ref()
+                        .is_some_and(|e| e.to_lowercase().contains(&lower))
+            })
             .collect()
     };
 
