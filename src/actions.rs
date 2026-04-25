@@ -85,6 +85,14 @@ pub enum Action {
     ToggleConfirmDeleteFile,
     CancelConfirmOffDelete,
     #[allow(dead_code)] // wired in Task 8
+    OpenProcessDetail { pid: u32 },
+    #[allow(dead_code)] // wired in Task 8
+    CloseProcessDetail,
+    #[allow(dead_code)] // wired in Task 8
+    ConfirmKillProcess { pid: u32 },
+    #[allow(dead_code)] // intercepted by main.rs, never reaches reducer
+    KillProcess { pid: u32 },
+    #[allow(dead_code)] // wired in Task 8
     KillProcessResult { pid: u32, success: bool, msg: Option<String> },
 }
 
@@ -148,6 +156,36 @@ mod tests {
             Action::CreateSwapProgress(CreateSwapProgress::StepUpdate { index, status }) => {
                 assert_eq!(index, 3);
                 assert_eq!(status, StepStatus::Done);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn open_process_detail_carries_pid() {
+        let a = Action::OpenProcessDetail { pid: 42 };
+        assert!(matches!(a, Action::OpenProcessDetail { pid: 42 }));
+    }
+
+    #[test]
+    fn close_process_detail_is_constructible() {
+        assert!(matches!(Action::CloseProcessDetail, Action::CloseProcessDetail));
+    }
+
+    #[test]
+    fn confirm_kill_process_carries_pid() {
+        let a = Action::ConfirmKillProcess { pid: 99 };
+        assert!(matches!(a, Action::ConfirmKillProcess { pid: 99 }));
+    }
+
+    #[test]
+    fn kill_process_result_has_fields() {
+        let a = Action::KillProcessResult { pid: 1, success: false, msg: Some("err".into()) };
+        match a {
+            Action::KillProcessResult { pid, success, msg } => {
+                assert_eq!(pid, 1);
+                assert!(!success);
+                assert_eq!(msg, Some("err".into()));
             }
             _ => panic!("wrong variant"),
         }

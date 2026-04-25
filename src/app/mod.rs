@@ -189,6 +189,18 @@ impl AppState {
             Action::RequestConfirmOffDelete => self.handle_request_confirm_off_delete(),
             Action::ToggleConfirmDeleteFile => self.handle_toggle_confirm_delete_file(),
             Action::CancelConfirmOffDelete => self.handle_cancel_confirm_off_delete(),
+            Action::OpenProcessDetail { .. } => {
+                // TODO: handle open process detail (Task 6+)
+            }
+            Action::CloseProcessDetail => {
+                // TODO: handle close process detail (Task 6+)
+            }
+            Action::ConfirmKillProcess { .. } => {
+                // TODO: handle confirm kill process (Task 6+)
+            }
+            Action::KillProcess { .. } => {
+                // intercepted by main.rs, never reaches reducer
+            }
             Action::KillProcessResult { .. } => {
                 // TODO: handle kill process result (Task 4 wires bridge only)
             }
