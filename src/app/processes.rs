@@ -1,4 +1,4 @@
-use crate::actions::{Action, SortColumn, SortDir};
+use crate::actions::{SortColumn, SortDir};
 use crate::app::AppState;
 
 impl AppState {

@@ -188,15 +188,15 @@ impl AppState {
     }
 }
 
+mod create_swap;
 mod devices;
-mod snapshot;
 mod processes;
+mod snapshot;
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
     use super::*;
     use crate::platform::{SwapInfo, SwapKind};
-    use std::path::PathBuf;
 
     pub fn make_caps() -> Capabilities {
         Capabilities {

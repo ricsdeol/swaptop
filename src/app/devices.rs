@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::actions::{Action, DeviceOp, DeviceOpKind, OpStatus};
+use crate::actions::{DeviceOp, DeviceOpKind, OpStatus};
 use crate::app::{AppState, ConfirmOffDelete};
 
 impl AppState {
