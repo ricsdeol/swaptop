@@ -52,7 +52,6 @@ impl std::fmt::Display for SwapKind {
 }
 
 #[derive(Debug, Clone)]
-#[expect(dead_code)]
 pub struct ProcessRow {
     pub pid: u32,
     pub name: String,

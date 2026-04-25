@@ -74,7 +74,9 @@ fn render_footer(f: &mut Frame, area: Rect, state: &AppState) {
             key_span("s"),
             desc_span(" sort  "),
             key_span("/"),
-            desc_span(" filter"),
+            desc_span(" filter  "),
+            key_span("Enter"),
+            desc_span(" details"),
         ])
     };
 
