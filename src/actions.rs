@@ -58,9 +58,7 @@ pub enum Action {
     SelectTab(usize),
     UpdateSnapshot(MemSnapshot),
     SetError(String),
-    #[allow(dead_code)] // used in Task 2 when bridge is fully integrated
     CollectStarted,
-    #[allow(dead_code)] // used in Task 2 when bridge is fully integrated
     CollectFinished,
 
     // Phase 4 — device navigation

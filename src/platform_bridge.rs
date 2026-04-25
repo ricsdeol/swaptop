@@ -38,7 +38,13 @@ impl PlatformBridge {
             while let Ok(cmd) = cmd_rx.recv() {
                 match cmd {
                     PlatformCommand::Collect => {
-                        Self::handle_collect(&mut *backend, &action_tx, &processes_active);
+                        let _ = action_tx.send(Action::CollectStarted);
+                        Self::handle_collect(
+                            &mut *backend,
+                            &action_tx,
+                            &processes_active,
+                        );
+                        let _ = action_tx.send(Action::CollectFinished);
                     }
                     PlatformCommand::DeviceOp { path, kind } => {
                         Self::handle_device_op(&mut *backend, &action_tx, path, kind);
@@ -226,6 +232,8 @@ mod tests {
         bridge.send(PlatformCommand::Collect);
         bridge.send(PlatformCommand::Shutdown);
         drop(bridge);
+        // CollectStarted arrives first; skip it to reach the payload
+        let _started = recv_action(&mut action_rx);
         let action = recv_action(&mut action_rx);
         assert!(matches!(action, Action::UpdateSnapshot(_)));
     }
@@ -242,6 +250,8 @@ mod tests {
         bridge.send(PlatformCommand::Collect);
         bridge.send(PlatformCommand::Shutdown);
         drop(bridge);
+        // CollectStarted arrives first; skip it to reach the payload
+        let _started = recv_action(&mut action_rx);
         let action = recv_action(&mut action_rx);
         if let Action::UpdateSnapshot(snap) = action {
             assert_eq!(snap.processes.len(), 1);
@@ -262,6 +272,8 @@ mod tests {
         bridge.send(PlatformCommand::Collect);
         bridge.send(PlatformCommand::Shutdown);
         drop(bridge);
+        // CollectStarted arrives first; skip it to reach the payload
+        let _started = recv_action(&mut action_rx);
         let action = recv_action(&mut action_rx);
         if let Action::UpdateSnapshot(snap) = action {
             assert!(snap.processes.is_empty());
@@ -282,6 +294,8 @@ mod tests {
         bridge.send(PlatformCommand::Collect);
         bridge.send(PlatformCommand::Shutdown);
         drop(bridge);
+        // CollectStarted arrives first; skip it to reach the payload
+        let _started = recv_action(&mut action_rx);
         let action = recv_action(&mut action_rx);
         assert!(matches!(action, Action::SetError(_)));
     }
@@ -321,6 +335,66 @@ mod tests {
         );
         bridge.send(PlatformCommand::Shutdown);
         drop(bridge);
+    }
+
+    #[test]
+    fn collect_emits_started_and_finished_around_snapshot() {
+        let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel();
+        let processes_active = Arc::new(AtomicBool::new(false));
+        let bridge = PlatformBridge::spawn_with_backend(
+            Box::new(MockBackend::healthy()),
+            action_tx,
+            processes_active,
+        );
+        bridge.send(PlatformCommand::Collect);
+        bridge.send(PlatformCommand::Shutdown);
+        drop(bridge);
+
+        let first = recv_action(&mut action_rx);
+        assert!(
+            matches!(first, Action::CollectStarted),
+            "expected CollectStarted, got {first:?}"
+        );
+        let second = recv_action(&mut action_rx);
+        assert!(
+            matches!(second, Action::UpdateSnapshot(_)),
+            "expected UpdateSnapshot, got {second:?}"
+        );
+        let third = recv_action(&mut action_rx);
+        assert!(
+            matches!(third, Action::CollectFinished),
+            "expected CollectFinished, got {third:?}"
+        );
+    }
+
+    #[test]
+    fn collect_error_still_emits_finished() {
+        let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel();
+        let processes_active = Arc::new(AtomicBool::new(false));
+        let bridge = PlatformBridge::spawn_with_backend(
+            Box::new(MockBackend::failing()),
+            action_tx,
+            processes_active,
+        );
+        bridge.send(PlatformCommand::Collect);
+        bridge.send(PlatformCommand::Shutdown);
+        drop(bridge);
+
+        let first = recv_action(&mut action_rx);
+        assert!(
+            matches!(first, Action::CollectStarted),
+            "expected CollectStarted, got {first:?}"
+        );
+        let second = recv_action(&mut action_rx);
+        assert!(
+            matches!(second, Action::SetError(_)),
+            "expected SetError, got {second:?}"
+        );
+        let third = recv_action(&mut action_rx);
+        assert!(
+            matches!(third, Action::CollectFinished),
+            "expected CollectFinished, got {third:?}"
+        );
     }
 
     #[test]
