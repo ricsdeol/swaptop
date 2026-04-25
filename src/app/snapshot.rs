@@ -79,12 +79,25 @@ mod tests {
     }
 
     #[test]
-    fn update_snapshot_clears_error_message() {
+    fn update_snapshot_does_not_clear_fresh_error() {
         let mut state = AppState::new(make_caps());
         // A fresh error (< 5 s old) must NOT be cleared by UpdateSnapshot.
         state.handle_action(Action::SetError("previous error".to_string()));
         state.handle_action(Action::UpdateSnapshot(make_snapshot()));
         assert!(state.error_msg.is_some());
+    }
+
+    #[test]
+    fn update_snapshot_clears_stale_error() {
+        use std::time::Duration;
+        let mut state = AppState::new(make_caps());
+        // Simulate an error older than 5 seconds.
+        state.error_msg = Some((
+            "stale error".into(),
+            Instant::now() - Duration::from_secs(6),
+        ));
+        state.handle_action(Action::UpdateSnapshot(make_snapshot()));
+        assert!(state.error_msg.is_none());
     }
 
     #[test]

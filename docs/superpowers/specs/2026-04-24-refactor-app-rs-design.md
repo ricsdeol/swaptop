@@ -126,10 +126,9 @@ Helpers de test (`make_caps`, `make_snapshot`, `make_device`, `make_process`): f
 |---------|------------------|----------|
 | `mod.rs` | ~200 | Struct, `new()`, `handle_action` dispatcher, helpers triviais, test helpers |
 | `snapshot.rs` | ~150 | `apply_snapshot`, history helpers, tests |
-| `devices.rs` | ~250 | Handlers + `on_devices_updated` + tests |
 | `processes.rs` | ~300 | Handlers + `on_processes_updated` + sort/filter + tests |
+| `devices.rs` | ~280 | Handlers + confirm actions + `on_devices_updated` + tests |
 | `create_swap.rs` | ~450 | Handlers complexos de modal + tests |
-| `devices.rs` | ~280 | Inclui confirm actions + tests |
 
 **Máximo por arquivo: ~450 linhas** (vs. 1500 hoje).
 
