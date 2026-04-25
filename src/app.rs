@@ -52,6 +52,10 @@ pub struct AppState {
     pub confirm_off_delete: Option<ConfirmOffDelete>,
 
     pub is_root: bool,
+
+    pub collect_in_progress: bool,
+    pub last_collect_completed: Instant,
+    pub device_op_started: Option<Instant>,
 }
 
 impl AppState {
@@ -80,6 +84,9 @@ impl AppState {
             create_swap_modal: None,
             confirm_off_delete: None,
             is_root: nix::unistd::geteuid().is_root(),
+            collect_in_progress: false,
+            last_collect_completed: Instant::now(),
+            device_op_started: None,
         }
     }
 
@@ -172,6 +179,7 @@ impl AppState {
                     self.selected_dev = self.selected_dev.min(self.devices.len() - 1);
                 }
                 self.current = Some(snapshot);
+                self.last_collect_completed = Instant::now();
                 // Clear stale errors (older than 5 s); keep recent ones visible.
                 if self
                     .error_msg
@@ -184,6 +192,14 @@ impl AppState {
 
             Action::SetError(msg) => {
                 self.error_msg = Some((msg, Instant::now()));
+            }
+
+            Action::CollectStarted => {
+                self.collect_in_progress = true;
+            }
+
+            Action::CollectFinished => {
+                self.collect_in_progress = false;
             }
 
             // Phase 4 — device navigation
@@ -209,6 +225,7 @@ impl AppState {
             Action::ExecuteDeviceOp { path, kind } => {
                 self.confirm_action = None;
                 self.confirm_off_delete = None;
+                self.device_op_started = Some(Instant::now());
                 self.device_op = Some(DeviceOp {
                     path,
                     kind,
@@ -1373,5 +1390,69 @@ mod tests {
         let modal = state.create_swap_modal.as_ref().unwrap();
         assert!(modal.completions.is_empty());
         assert_eq!(modal.completion_sel, None);
+    }
+
+    // ── Collect lifecycle (responsiveness) ───────────────────────────────
+
+    #[test]
+    fn collect_started_sets_in_progress() {
+        let mut state = AppState::new(make_caps());
+        assert!(!state.collect_in_progress);
+        state.handle_action(Action::CollectStarted);
+        assert!(state.collect_in_progress);
+    }
+
+    #[test]
+    fn collect_finished_clears_in_progress() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::CollectStarted);
+        assert!(state.collect_in_progress);
+        state.handle_action(Action::CollectFinished);
+        assert!(!state.collect_in_progress);
+    }
+
+    #[test]
+    fn update_snapshot_updates_last_collect_completed() {
+        let mut state = AppState::new(make_caps());
+        let before = state.last_collect_completed;
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        state.handle_action(Action::UpdateSnapshot(make_snapshot()));
+        assert!(state.last_collect_completed > before);
+    }
+
+    #[test]
+    fn set_error_does_not_clear_collect_in_progress() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::CollectStarted);
+        state.handle_action(Action::SetError("some error".to_string()));
+        assert!(state.collect_in_progress, "SetError must not clear collect flag");
+    }
+
+    #[test]
+    fn execute_device_op_sets_started_timestamp() {
+        let mut state = AppState::new(make_caps());
+        assert!(state.device_op_started.is_none());
+        state.handle_action(Action::ExecuteDeviceOp {
+            path: "/dev/sda2".into(),
+            kind: DeviceOpKind::Off,
+        });
+        assert!(state.device_op_started.is_some());
+        assert!(state.device_op_started.unwrap().elapsed().as_secs() < 1);
+    }
+
+    #[test]
+    fn device_op_update_preserves_started_timestamp() {
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::ExecuteDeviceOp {
+            path: "/dev/sda2".into(),
+            kind: DeviceOpKind::Off,
+        });
+        let started = state.device_op_started.unwrap();
+        state.handle_action(Action::DeviceOpUpdate(DeviceOp {
+            path: "/dev/sda2".into(),
+            kind: DeviceOpKind::Off,
+            status: OpStatus::Done,
+        }));
+        assert_eq!(state.device_op_started.unwrap(), started);
     }
 }
