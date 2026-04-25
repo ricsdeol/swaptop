@@ -26,7 +26,7 @@ and the keybinding status bar at the bottom.*
 | ✅ | Real-time RAM and swap gauges with usage color coding |
 | ✅ | 120-second rolling history chart (RAM + Swap overlaid) |
 | ✅ | Active swap device summary |
-| ✅ | Tab navigation (Overview → Processes → Devices → Create Swap) |
+| ✅ | Tab navigation (Overview → Processes → Devices) |
 | ✅ | Platform abstraction — architecture ready for macOS, BSD, Windows |
 | ✅ | Per-process swap table with sorting and filtering (`/proc/PID/smaps`) |
 | ✅ | Process table columns: PID, Name, User, RSS, Swap, CPU% |
@@ -89,14 +89,10 @@ sudo ./swaptop
 | `1` | Go to Overview tab |
 | `2` | Go to Processes tab |
 | `3` | Go to Devices tab |
-| `4` | Go to Create Swap tab |
 | `Tab` | Next tab |
 | `Shift+Tab` | Previous tab |
 | `q` / `Q` | Quit |
 | `Ctrl+C` | Quit |
-
-> `r` is tab-specific: on Overview/Processes it forces an immediate refresh; on
-> Devices it triggers Reset on the selected device (see the Devices tab table).
 
 #### Processes tab
 
@@ -118,68 +114,150 @@ sudo ./swaptop
 |-----|--------|
 | `j` / `↓` | Move selection down |
 | `k` / `↑` | Move selection up |
-| `o` | Activate selected device (`swapon` — requires root) |
-| `f` | Deactivate selected device (`swapoff` — requires root) |
+| `a` | Activate selected device (`swapon` — requires root) |
+| `d` | Deactivate selected device (`swapoff` — requires root) |
 | `r` | Reset selected device (swapoff + swapon — requires root) |
-| `s` / `Enter` | Confirm pending operation |
+| `n` | Create new swap file (opens wizard — requires root) |
+| `c` / `Enter` | Confirm pending operation |
 | `Esc` | Cancel pending operation |
 
 ---
 
 ## Architecture
 
-```
-src/
-├── main.rs          # tokio::select! event loop (tick / frame / input)
-├── app.rs           # AppState + Action reducer (pure, no I/O)
-├── actions.rs       # Action enum + DeviceOp / SortColumn / SortDir types
-├── collector.rs     # Calls SwapBackend, produces MemSnapshot
-├── input.rs         # resolve_key() — maps KeyEvent + KeyContext → Action
-├── tui.rs           # Terminal init / restore helpers
-├── platform/
-│   ├── mod.rs       # SwapBackend trait
-│   ├── types.rs     # SwapInfo, SwapDevice, ProcessRow, Capabilities, MemSnapshot
-│   ├── factory.rs   # detect() -> Box<dyn SwapBackend> (cfg-gated per OS)
-│   ├── linux.rs     # Primary implementation (sysinfo + /proc)
-│   ├── macos.rs     # Stub — global totals + glob swapfile discovery
-│   ├── bsd.rs       # Stub — future
-│   └── windows.rs   # Stub — future
-└── ui/
-    ├── mod.rs        # Top-level render(), tab bar, tab dispatch
-    ├── overview.rs   # RAM/Swap gauges + history chart + device summary
-    ├── processes.rs  # Sortable/filterable process table + filter bar + footer
-    ├── devices.rs    # Swap device table + swapon/swapoff + confirm modal
-    ├── statusbar.rs  # Keybinding hints + error banners
-    └── design.rs     # Spacing constants, color palette
+### Data flow
+
+```mermaid
+flowchart LR
+    subgraph "Tokio event loop · main.rs"
+        KEY[/"⌨ KeyEvent"/]
+        INPUT["input::resolve_key()
+        pure · no locks"]
+        REDUCER["AppState::handle_action()
+        pure reducer · no I/O"]
+        RENDER["ui/ render()
+        read-only &AppState"]
+    end
+
+    subgraph "Dedicated std::thread"
+        BRIDGE["PlatformBridge
+        owns Box‹dyn PlatformProvider›"]
+    end
+
+    subgraph "platform/"
+        PROVIDER["PlatformProvider trait
+        LinuxBackend · MacosBackend · …"]
+        PROC[("/proc · sysinfo · nix")]
+    end
+
+    KEY --> INPUT
+    INPUT -->|"Option‹Action›"| REDUCER
+    REDUCER -->|"state updated"| RENDER
+    REDUCER -.->|"main.rs sends
+    PlatformCommand"| BRIDGE
+    BRIDGE -->|"calls"| PROVIDER
+    PROVIDER --> PROC
+    BRIDGE -->|"Action via
+    tokio::mpsc"| REDUCER
 ```
 
 ### Event loop
 
-Three concurrent tasks multiplexed via `tokio::select!`:
+Five arms multiplexed via `tokio::select!` in `main.rs`:
 
-- **tick** (1 s) — `Collector` calls the `SwapBackend`, produces a `MemSnapshot`,
-  pushes `Action::UpdateSnapshot` into `AppState`
-- **frame** (~30 fps) — `terminal.draw()` reads `&AppState` (no mutations)
-- **input** — `crossterm::EventStream` → `input::resolve_key()` → `Action` enum → `AppState::handle_action()`
+```mermaid
+flowchart TB
+    SELECT{"tokio::select!"}
+    SELECT --> SHUTDOWN["shutdown
+    CancellationToken"]
+    SELECT --> ACTION_RX["action_rx
+    Actions from bridge"]
+    SELECT --> TICK["tick · 1s
+    bridge.send(Collect)"]
+    SELECT --> FRAME["frame_tick · 30fps
+    terminal.draw(&AppState)"]
+    SELECT --> EVENTS["events
+    key → resolve → Action"]
 
-`AppState` is wrapped in `Arc<Mutex<AppState>>` and shared between the collector
-task and the render path.
+    ACTION_RX -->|"Action"| REDUCER["AppState::handle_action()"]
+    EVENTS -->|"Action"| REDUCER
+    TICK -->|"PlatformCommand"| BRIDGE["PlatformBridge thread"]
+    EVENTS -.->|"DeviceOp / CreateSwap"| BRIDGE
+    BRIDGE -->|"Action"| ACTION_RX
+```
+
+### File structure
+
+```
+src/
+├── main.rs             # tokio::select! event loop — orchestrates everything
+├── app.rs              # AppState + handle_action() reducer (pure, no I/O)
+├── actions.rs          # Action enum + DeviceOpKind, OpStatus, SortColumn
+├── platform_bridge.rs  # Dedicated thread: owns PlatformProvider, processes commands
+├── input.rs            # resolve_key() — pure (KeyEvent, &KeyContext) → Option<Action>
+├── create_swap.rs      # Wizard state types (CreateSwapModal, CreateSwapField, SizeUnit)
+├── tui.rs              # Terminal init / restore helpers
+├── platform/
+│   ├── mod.rs          # PlatformProvider trait (system_ram, swap_on, create_swap_file, ...)
+│   ├── types.rs        # SwapInfo, SwapDevice, ProcessRow, MemSnapshot, StepStatus
+│   ├── factory.rs      # detect() → Box<dyn PlatformProvider> (cfg-gated per OS)
+│   ├── linux/          # LinuxBackend: sysinfo + /proc + nix + create_swap step runner
+│   ├── macos.rs        # Stub — global totals + glob swapfile discovery
+│   ├── bsd.rs          # Stub — future
+│   └── windows.rs      # Stub — future
+└── ui/
+    ├── mod.rs           # Top-level render(), tab bar, tab dispatch
+    ├── overview.rs      # RAM/Swap gauges + history chart + device summary
+    ├── processes.rs     # Sortable/filterable process table
+    ├── devices.rs       # Swap device table + confirm modals + elapsed time
+    ├── create_swap.rs   # Wizard form UI (modal, inputs, progress display)
+    ├── statusbar.rs     # Key hints, error banners, collect spinner, stale indicator
+    └── design.rs        # Spacing constants, color palette
+```
+
+### PlatformBridge
+
+`PlatformBridge` owns a `Box<dyn PlatformProvider>` on a dedicated `std::thread`.
+`main.rs` never imports a platform backend directly — all platform I/O goes through
+the bridge. `factory::detect()` uses `#[cfg(target_os)]` to return the correct
+backend at compile time.
+
+```mermaid
+sequenceDiagram
+    participant M as main.rs (tokio)
+    participant B as PlatformBridge (std::thread)
+    participant P as PlatformProvider
+
+    M->>B: PlatformCommand::Collect
+    B->>M: Action::CollectStarted
+    B->>P: system_ram(), system_swap(), swap_devices()
+    P-->>B: SwapInfo, Vec‹SwapDevice›
+    B->>M: Action::UpdateSnapshot(MemSnapshot)
+    B->>M: Action::CollectFinished
+
+    M->>B: PlatformCommand::DeviceOp { path, kind }
+    B->>P: swap_on(&path) / swap_off(&path)
+    P-->>B: Result‹()›
+    B->>M: Action::DeviceOpUpdate(DeviceOp)
+
+    M->>B: PlatformCommand::CreateSwap { path, size, … }
+    B->>P: create_swap_file(path, size, …)
+    P-->>B: Receiver‹CreateSwapProgress›
+    Note over B: spawns sub-thread to relay progress
+    B->>M: Action::CreateSwapProgress (per step)
+```
 
 ### Input handling
 
-Key events are resolved by `input::resolve_key()`, which receives a `KeyContext`
-struct containing the active tab, confirm-modal state, filter mode flag, and
-current sort column. Resolution is layered:
+Key events are resolved by `input::resolve_key()`, a pure function that receives
+a `KeyContext` snapshot (extracted via a single lock in `main.rs`). Resolution is
+layered:
 
 1. **Filter mode** — captures all printable characters and `Backspace` / `Esc` / `Enter`
-2. **Global keys** — `q`, `Ctrl+C`, `Tab`, `Shift+Tab`, `1`–`4`
+2. **Global keys** — `q`, `Ctrl+C`, `Tab`, `Shift+Tab`, `1`–`3`
 3. **Tab-specific keys** — only fire when the matching tab is active
 
 ### Platform abstraction
-
-`Collector` only touches `Box<dyn SwapBackend>` — it never imports a platform
-module directly. `factory::detect()` uses `#[cfg(target_os)]` to return the
-correct backend at compile time.
 
 **Linux data sources:**
 
@@ -192,7 +270,7 @@ correct backend at compile time.
 
 > `/proc/PID/smaps` parsing is expensive and is only triggered when the
 > Processes tab is active, via a `processes_active` atomic flag checked by
-> the collector.
+> the bridge's collect handler.
 
 ### State (`AppState`)
 
@@ -210,7 +288,10 @@ correct backend at compile time.
 | `device_op` | In-flight or completed device operation |
 | `confirm_action` | Pending `DeviceOpKind` awaiting user confirmation |
 | `capabilities` | Platform feature flags |
-| `error_msg` | Displayed in the status bar; cleared on next tick |
+| `error_msg` | Displayed in the status bar; auto-cleared after 5 s |
+| `collect_in_progress` | `true` while bridge is collecting system data |
+| `last_collect_completed` | Timestamp of last snapshot — stale detection (>3 s) |
+| `device_op_started` | Timestamp when current device operation began |
 
 ---
 
