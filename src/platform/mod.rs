@@ -29,7 +29,9 @@ pub trait PlatformProvider: Send + Sync {
     }
     #[allow(dead_code)]
     fn kill_process(&self, _pid: u32) -> Result<()> {
-        Err(color_eyre::eyre::eyre!("kill_process not supported on this platform"))
+        Err(color_eyre::eyre::eyre!(
+            "kill_process not supported on this platform"
+        ))
     }
     fn capabilities(&self) -> Capabilities;
     fn create_swap_file(

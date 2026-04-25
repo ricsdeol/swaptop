@@ -29,7 +29,9 @@ impl PlatformProvider for WindowsBackend {
         color_eyre::eyre::bail!("not supported on Windows")
     }
     fn kill_process(&self, _pid: u32) -> Result<()> {
-        Err(color_eyre::eyre::eyre!("kill_process not supported on Windows"))
+        Err(color_eyre::eyre::eyre!(
+            "kill_process not supported on Windows"
+        ))
     }
     fn capabilities(&self) -> Capabilities {
         Capabilities {

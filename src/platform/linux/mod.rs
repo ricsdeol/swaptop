@@ -121,7 +121,7 @@ impl PlatformProvider for LinuxBackend {
     }
 
     fn kill_process(&self, pid: u32) -> color_eyre::Result<()> {
-        use nix::sys::signal::{kill, Signal};
+        use nix::sys::signal::{Signal, kill};
         use nix::unistd::Pid;
         kill(Pid::from_raw(pid as i32), Signal::SIGTERM)
             .map_err(|e| color_eyre::eyre::eyre!("kill failed: {e}"))

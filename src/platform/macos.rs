@@ -29,7 +29,9 @@ impl PlatformProvider for MacosBackend {
         color_eyre::eyre::bail!("controlled by dynamic_pager on macOS")
     }
     fn kill_process(&self, _pid: u32) -> Result<()> {
-        Err(color_eyre::eyre::eyre!("kill_process not supported on macOS"))
+        Err(color_eyre::eyre::eyre!(
+            "kill_process not supported on macOS"
+        ))
     }
     fn capabilities(&self) -> Capabilities {
         Capabilities {

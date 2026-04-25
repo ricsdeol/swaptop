@@ -41,12 +41,17 @@ impl AppState {
 
     fn push_process_history(&mut self, snapshot: &MemSnapshot) {
         for proc in &snapshot.processes {
-            let entry = self.process_history.entry(proc.pid).or_insert_with(|| ProcessHistory {
-                rss_history: VecDeque::new(),
-                swap_history: VecDeque::new(),
-            });
+            let entry = self
+                .process_history
+                .entry(proc.pid)
+                .or_insert_with(|| ProcessHistory {
+                    rss_history: VecDeque::new(),
+                    swap_history: VecDeque::new(),
+                });
             entry.rss_history.push_back((snapshot.timestamp, proc.rss));
-            entry.swap_history.push_back((snapshot.timestamp, proc.swap));
+            entry
+                .swap_history
+                .push_back((snapshot.timestamp, proc.swap));
             while entry.rss_history.len() > 900 {
                 entry.rss_history.pop_front();
             }

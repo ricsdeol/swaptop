@@ -29,7 +29,9 @@ impl PlatformProvider for BsdBackend {
         color_eyre::eyre::bail!("BSD backend not yet implemented")
     }
     fn kill_process(&self, _pid: u32) -> Result<()> {
-        Err(color_eyre::eyre::eyre!("kill_process not supported on this platform"))
+        Err(color_eyre::eyre::eyre!(
+            "kill_process not supported on this platform"
+        ))
     }
     fn capabilities(&self) -> Capabilities {
         Capabilities {

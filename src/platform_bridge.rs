@@ -21,7 +21,9 @@ pub enum PlatformCommand {
         activate_only: bool,
     },
     #[allow(dead_code)] // wired in Task 10
-    KillProcess { pid: u32 },
+    KillProcess {
+        pid: u32,
+    },
     Shutdown,
 }
 
@@ -71,8 +73,16 @@ impl PlatformBridge {
                     PlatformCommand::KillProcess { pid } => {
                         let result = backend.kill_process(pid);
                         let action = match result {
-                            Ok(()) => Action::KillProcessResult { pid, success: true, msg: None },
-                            Err(e) => Action::KillProcessResult { pid, success: false, msg: Some(e.to_string()) },
+                            Ok(()) => Action::KillProcessResult {
+                                pid,
+                                success: true,
+                                msg: None,
+                            },
+                            Err(e) => Action::KillProcessResult {
+                                pid,
+                                success: false,
+                                msg: Some(e.to_string()),
+                            },
                         };
                         let _ = action_tx.send(action);
                     }
