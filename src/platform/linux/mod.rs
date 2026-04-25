@@ -134,8 +134,8 @@ impl PlatformProvider for LinuxBackend {
         priority: i16,
         activate_after: bool,
         activate_only: bool,
-        on_progress: Box<dyn Fn(super::CreateSwapProgress) + Send>,
-    ) {
+    ) -> std::sync::mpsc::Receiver<super::CreateSwapProgress> {
+        let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             create_swap::run_create_swap_steps(
                 path,
@@ -143,9 +143,10 @@ impl PlatformProvider for LinuxBackend {
                 priority,
                 activate_after,
                 activate_only,
-                &on_progress,
+                &tx,
             );
         });
+        rx
     }
 }
 

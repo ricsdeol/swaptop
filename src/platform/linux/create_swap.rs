@@ -73,10 +73,10 @@ pub fn run_create_swap_steps(
     priority: i16,
     activate_after: bool,
     activate_only: bool,
-    on_progress: &dyn Fn(CreateSwapProgress),
+    progress: &std::sync::mpsc::Sender<CreateSwapProgress>,
 ) {
     let send = |idx: usize, status: StepStatus| {
-        on_progress(CreateSwapProgress::StepUpdate { index: idx, status });
+        let _ = progress.send(CreateSwapProgress::StepUpdate { index: idx, status });
     };
 
     // activate_only path: go straight to Step 6 (swapon).
@@ -106,7 +106,7 @@ pub fn run_create_swap_steps(
         TargetFileCheck::DoesNotExist => send(1, StepStatus::Done),
         TargetFileCheck::AlreadySwap { size } => {
             send(1, StepStatus::Done);
-            on_progress(CreateSwapProgress::ConfirmActivateOnly {
+            let _ = progress.send(CreateSwapProgress::ConfirmActivateOnly {
                 path: path.clone(),
                 size_bytes: size,
             });

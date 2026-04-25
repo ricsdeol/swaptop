@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::actions::{Action, DeviceOp, DeviceOpKind, OpStatus};
-use crate::platform::{CreateSwapProgress, MemSnapshot, PlatformProvider};
+use crate::platform::{MemSnapshot, PlatformProvider};
 
 pub enum PlatformCommand {
     Collect,
@@ -50,17 +50,19 @@ impl PlatformBridge {
                         activate_after,
                         activate_only,
                     } => {
-                        let tx = action_tx.clone();
-                        backend.create_swap_file(
+                        let rx = backend.create_swap_file(
                             path,
                             size_bytes,
                             priority,
                             activate_after,
                             activate_only,
-                            Box::new(move |progress: CreateSwapProgress| {
-                                let _ = tx.send(Action::CreateSwapProgress(progress));
-                            }),
                         );
+                        let tx = action_tx.clone();
+                        std::thread::spawn(move || {
+                            while let Ok(progress) = rx.recv() {
+                                let _ = tx.send(Action::CreateSwapProgress(progress));
+                            }
+                        });
                     }
                     PlatformCommand::Shutdown => break,
                 }
