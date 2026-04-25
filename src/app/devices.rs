@@ -54,8 +54,6 @@ impl AppState {
         self.device_op = Some(op);
     }
 
-    // ── Phase 6 — ConfirmOffDelete ──────────────────────────────────────────
-
     pub(crate) fn handle_request_confirm_off_delete(&mut self) {
         if let Some(dev) = self.devices.get(self.selected_dev) {
             self.confirm_off_delete = Some(ConfirmOffDelete {

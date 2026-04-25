@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use crate::create_swap::CreateSwapField;
 use crate::platform::{CreateSwapProgress, MemSnapshot};
 
-// ── Phase 4 types ─────────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeviceOpKind {
     On,
@@ -27,8 +25,6 @@ pub struct DeviceOp {
     pub kind: DeviceOpKind,
     pub status: OpStatus,
 }
-
-// ── Phase 2 types ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SortColumn {
@@ -59,18 +55,12 @@ pub enum Action {
     SetError(String),
     CollectStarted,
     CollectFinished,
-
-    // Phase 4 — device navigation
     DeviceUp,
     DeviceDown,
-
-    // Phase 4 — operation flow
     RequestConfirm(DeviceOpKind),
     CancelConfirm,
     ExecuteDeviceOp { path: PathBuf, kind: DeviceOpKind },
     DeviceOpUpdate(DeviceOp),
-
-    // Phase 2 — processes navigation
     NavigateUp,
     NavigateDown,
     SortBy(SortColumn),
@@ -78,8 +68,6 @@ pub enum Action {
     FilterChar(char),
     FilterBackspace,
     ExitFilterMode,
-
-    // Phase 5 — create swap modal
     OpenCreateSwap,
     CloseCreateSwap,
     CreateSwapReturnToForm,
@@ -89,14 +77,10 @@ pub enum Action {
     CreateSwapToggleActivate,
     CreateSwapSubmit { activate_only: bool },
     CreateSwapProgress(CreateSwapProgress),
-
-    // Phase 6 — path autocomplete
     CreateSwapSetCompletions(Vec<String>),
     CreateSwapCompletionMove(i16),
     CreateSwapApplyCompletion,
     CreateSwapClearCompletions,
-
-    // Phase 6 — delete file on swapoff
     RequestConfirmOffDelete,
     ToggleConfirmDeleteFile,
     CancelConfirmOffDelete,

@@ -116,7 +116,6 @@ pub struct CreateSwapModal {
     pub size_unit: SizeUnit,
     pub activate_after: bool,
     pub validation_error: Option<String>,
-    // Phase 6 — path autocomplete
     pub completions: Vec<String>,
     pub completion_sel: Option<usize>,
 }
