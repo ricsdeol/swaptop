@@ -356,6 +356,13 @@ impl AppState {
                             modal.validation_error = Some("Path is required".to_string());
                             return;
                         }
+                        if path.chars().any(|c| c.is_whitespace() || c.is_control()) {
+                            modal.validation_error = Some(
+                                "Path cannot contain spaces, tabs, or control characters"
+                                    .to_string(),
+                            );
+                            return;
+                        }
                         if !std::path::Path::new(&path).is_absolute() {
                             modal.validation_error = Some("Path must be absolute".to_string());
                             return;
@@ -1425,7 +1432,10 @@ mod tests {
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::CollectStarted);
         state.handle_action(Action::SetError("some error".to_string()));
-        assert!(state.collect_in_progress, "SetError must not clear collect flag");
+        assert!(
+            state.collect_in_progress,
+            "SetError must not clear collect flag"
+        );
     }
 
     #[test]
@@ -1454,5 +1464,53 @@ mod tests {
             status: OpStatus::Done,
         }));
         assert_eq!(state.device_op_started.unwrap(), started);
+    }
+
+    // ── Path validation — invalid characters ────────────────────────────
+
+    #[test]
+    fn create_swap_submit_rejects_path_with_spaces() {
+        use tui_input::Input;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("/swapfile 2");
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert_eq!(
+            modal.validation_error.as_deref(),
+            Some("Path cannot contain spaces, tabs, or control characters")
+        );
+        assert!(matches!(modal.mode, CreateSwapMode::Form { .. }));
+    }
+
+    #[test]
+    fn create_swap_submit_rejects_path_with_tabs() {
+        use tui_input::Input;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("/swap\tfile");
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert_eq!(
+            modal.validation_error.as_deref(),
+            Some("Path cannot contain spaces, tabs, or control characters")
+        );
+    }
+
+    #[test]
+    fn create_swap_submit_rejects_whitespace_only_path() {
+        use tui_input::Input;
+        let mut state = AppState::new(make_caps());
+        state.handle_action(Action::OpenCreateSwap);
+        state.create_swap_modal.as_mut().unwrap().path_input = Input::from("   \t\n  ");
+        state.handle_action(Action::CreateSwapSubmit {
+            activate_only: false,
+        });
+        let modal = state.create_swap_modal.as_ref().unwrap();
+        assert_eq!(modal.validation_error.as_deref(), Some("Path is required"));
     }
 }

@@ -40,9 +40,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     } else if state.last_collect_completed.elapsed() >= Duration::from_secs(3) {
         spans.push(Span::styled(
             " ⚠ stale ",
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ));
     }
 

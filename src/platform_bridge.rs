@@ -39,11 +39,7 @@ impl PlatformBridge {
                 match cmd {
                     PlatformCommand::Collect => {
                         let _ = action_tx.send(Action::CollectStarted);
-                        Self::handle_collect(
-                            &mut *backend,
-                            &action_tx,
-                            &processes_active,
-                        );
+                        Self::handle_collect(&mut *backend, &action_tx, &processes_active);
                         let _ = action_tx.send(Action::CollectFinished);
                     }
                     PlatformCommand::DeviceOp { path, kind } => {
