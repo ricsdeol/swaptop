@@ -30,11 +30,11 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
 }
 
 fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
-    let w = width.min(area.width);
-    let h = height.min(area.height);
-    let x = area.x + (area.width.saturating_sub(w)) / 2;
-    let y = area.y + (area.height.saturating_sub(h)) / 2;
-    Rect::new(x, y, w, h)
+    let clamped_width = width.min(area.width);
+    let clamped_height = height.min(area.height);
+    let x = area.x + (area.width.saturating_sub(clamped_width)) / 2;
+    let y = area.y + (area.height.saturating_sub(clamped_height)) / 2;
+    Rect::new(x, y, clamped_width, clamped_height)
 }
 
 fn render_form(f: &mut Frame, area: Rect, modal: &CreateSwapModal, focused: CreateSwapField) {
@@ -389,19 +389,19 @@ mod tests {
     #[test]
     fn centered_rect_stays_within_bounds() {
         let area = Rect::new(0, 0, 100, 40);
-        let r = centered_rect(area, 60, 20);
-        assert_eq!(r.width, 60);
-        assert_eq!(r.height, 20);
-        assert!(r.x + r.width <= area.x + area.width);
-        assert!(r.y + r.height <= area.y + area.height);
+        let popup_area = centered_rect(area, 60, 20);
+        assert_eq!(popup_area.width, 60);
+        assert_eq!(popup_area.height, 20);
+        assert!(popup_area.x + popup_area.width <= area.x + area.width);
+        assert!(popup_area.y + popup_area.height <= area.y + area.height);
     }
 
     #[test]
     fn centered_rect_clamps_when_area_smaller_than_requested() {
         let area = Rect::new(0, 0, 30, 10);
-        let r = centered_rect(area, 60, 20);
-        assert_eq!(r.width, 30);
-        assert_eq!(r.height, 10);
+        let popup_area = centered_rect(area, 60, 20);
+        assert_eq!(popup_area.width, 30);
+        assert_eq!(popup_area.height, 10);
     }
 
     #[test]

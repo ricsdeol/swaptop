@@ -54,27 +54,32 @@ pub struct KeyContext {
 }
 
 impl KeyContext {
-    pub fn from_state(s: &AppState) -> Self {
+    pub fn from_state(app_state: &AppState) -> Self {
         let device = DeviceContext {
-            has_devices: !s.devices.is_empty(),
-            confirm_action: s.confirm_action.clone(),
-            selected_path: s.devices.get(s.selected_dev).map(|d| d.path.clone()),
-            selected_active: s.devices.get(s.selected_dev).map(|d| d.active),
-            selected_is_file: s
+            has_devices: !app_state.devices.is_empty(),
+            confirm_action: app_state.confirm_action.clone(),
+            selected_path: app_state
                 .devices
-                .get(s.selected_dev)
-                .map(|d| matches!(d.kind, SwapKind::File)),
-            confirm_off_delete: s
-                .confirm_off_delete
-                .as_ref()
-                .map(|c| ConfirmOffDeleteContext {
-                    path: c.path.clone(),
-                    delete_file: c.delete_file,
-                    active: c.active,
-                }),
+                .get(app_state.selected_dev)
+                .map(|device| device.path.clone()),
+            selected_active: app_state
+                .devices
+                .get(app_state.selected_dev)
+                .map(|device| device.active),
+            selected_is_file: app_state
+                .devices
+                .get(app_state.selected_dev)
+                .map(|device| matches!(device.kind, SwapKind::File)),
+            confirm_off_delete: app_state.confirm_off_delete.as_ref().map(|confirm| {
+                ConfirmOffDeleteContext {
+                    path: confirm.path.clone(),
+                    delete_file: confirm.delete_file,
+                    active: confirm.active,
+                }
+            }),
         };
 
-        let create_swap = s.create_swap_modal.as_ref().map(|modal| {
+        let create_swap = app_state.create_swap_modal.as_ref().map(|modal| {
             let (mode, focused_field) = match &modal.mode {
                 CreateSwapMode::Form { focused_field } => {
                     (CreateSwapModeKind::Form, Some(*focused_field))
@@ -99,16 +104,18 @@ impl KeyContext {
             }
         });
 
-        let process_detail = s.selected_process_detail.map(|pid| ProcessDetailContext {
-            pid,
-            show_kill_confirm: s.process_detail_confirm_kill,
-        });
+        let process_detail = app_state
+            .selected_process_detail
+            .map(|pid| ProcessDetailContext {
+                pid,
+                show_kill_confirm: app_state.process_detail_confirm_kill,
+            });
 
         Self {
-            active_tab: s.active_tab.clone(),
-            filter_mode: s.filter_mode,
-            sort_col: s.sort_col,
-            is_root: s.is_root,
+            active_tab: app_state.active_tab.clone(),
+            filter_mode: app_state.filter_mode,
+            sort_col: app_state.sort_col,
+            is_root: app_state.is_root,
             device,
             create_swap,
             process_detail,
@@ -384,19 +391,20 @@ fn compute_path_completions(partial: &str) -> Vec<String> {
         return Vec::new();
     };
     let mut results: Vec<String> = entries
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_name()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry
+                .file_name()
                 .to_str()
-                .map(|n| n.starts_with(prefix))
+                .map(|name| name.starts_with(prefix))
                 .unwrap_or(false)
         })
-        .map(|e| {
-            let mut p = e.path().to_string_lossy().to_string();
-            if e.path().is_dir() {
-                p.push('/');
+        .map(|entry| {
+            let mut path = entry.path().to_string_lossy().to_string();
+            if entry.path().is_dir() {
+                path.push('/');
             }
-            p
+            path
         })
         .collect();
     results.sort();
@@ -585,17 +593,17 @@ mod tests {
 
     #[test]
     fn number_keys_select_tabs() {
-        for n in [1_usize, 2, 3] {
-            let c = char::from_digit(n as u32, 10).unwrap();
+        for number in [1_usize, 2, 3] {
+            let char_digit = char::from_digit(number as u32, 10).unwrap();
             let action = rk(
-                key(KeyCode::Char(c)),
+                key(KeyCode::Char(char_digit)),
                 Tab::Overview,
                 None,
                 false,
                 false,
                 SortColumn::Swap,
             );
-            assert!(matches!(action, Some(Action::SelectTab(v)) if v == n));
+            assert!(matches!(action, Some(Action::SelectTab(v)) if v == number));
         }
     }
 
@@ -801,7 +809,7 @@ mod tests {
     #[test]
     fn completions_for_root_contains_entries() {
         let results = compute_path_completions("/tmp");
-        assert!(results.iter().all(|p| p.starts_with("/tmp")));
+        assert!(results.iter().all(|path| path.starts_with("/tmp")));
     }
 
     #[test]
@@ -814,13 +822,13 @@ mod tests {
     fn completions_for_slash_returns_root_entries() {
         let results = compute_path_completions("/");
         assert!(!results.is_empty());
-        assert!(results.iter().all(|p| p.starts_with('/')));
+        assert!(results.iter().all(|path| path.starts_with('/')));
     }
 
     #[test]
     fn completions_dirs_end_with_slash() {
         let results = compute_path_completions("/");
-        let dirs: Vec<_> = results.iter().filter(|p| p.ends_with('/')).collect();
+        let dirs: Vec<_> = results.iter().filter(|path| path.ends_with('/')).collect();
         assert!(
             !dirs.is_empty(),
             "root should contain at least one directory"

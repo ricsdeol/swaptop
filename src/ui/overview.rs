@@ -230,10 +230,10 @@ fn render_device_summary(f: &mut Frame, area: Rect, state: &AppState) {
     let (count, total_bytes) = state
         .current
         .as_ref()
-        .map(|s| {
-            let n: usize = s.devices.len();
-            let t: u64 = s.devices.iter().map(|d| d.total).sum();
-            (n, t)
+        .map(|snapshot| {
+            let count: usize = snapshot.devices.len();
+            let total: u64 = snapshot.devices.iter().map(|device| device.total).sum();
+            (count, total)
         })
         .unwrap_or((0, 0));
 

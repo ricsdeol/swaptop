@@ -48,7 +48,7 @@ fn build_layout(area: Rect, filter_mode: bool) -> std::rc::Rc<[Rect]> {
 
 fn render_filter_bar(f: &mut Frame, area: Rect, state: &AppState) {
     let text = format!(" {}_", state.filter_text);
-    let p = Paragraph::new(text)
+    let paragraph = Paragraph::new(text)
         .block(
             Block::default()
                 .title(" Filter ")
@@ -56,7 +56,7 @@ fn render_filter_bar(f: &mut Frame, area: Rect, state: &AppState) {
                 .border_style(Style::default().fg(Color::Yellow)),
         )
         .style(Style::default().fg(Color::White));
-    f.render_widget(p, area);
+    f.render_widget(paragraph, area);
 }
 
 fn render_footer(f: &mut Frame, area: Rect, state: &AppState) {
@@ -98,11 +98,11 @@ fn desc_span(desc: &str) -> Span<'_> {
 }
 
 fn render_platform_banner(f: &mut Frame, area: Rect) {
-    let p = Paragraph::new(Span::styled(
+    let paragraph = Paragraph::new(Span::styled(
         "  Swap usage per process is not available on this platform",
         Style::default().fg(Color::Yellow),
     ));
-    f.render_widget(p, area);
+    f.render_widget(paragraph, area);
 }
 
 fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
@@ -126,8 +126,9 @@ fn render_table(f: &mut Frame, area: Rect, state: &AppState) {
     };
 
     if visible.is_empty() {
-        let p = Paragraph::new("  No processes found").style(Style::default().fg(Color::DarkGray));
-        f.render_widget(p, area);
+        let paragraph =
+            Paragraph::new("  No processes found").style(Style::default().fg(Color::DarkGray));
+        f.render_widget(paragraph, area);
         return;
     }
 
