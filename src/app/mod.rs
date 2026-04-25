@@ -2,8 +2,8 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use crate::actions::{Action, DeviceOp, DeviceOpKind, OpStatus, SortColumn, SortDir};
-use crate::create_swap::{CreateSwapModal, CreateSwapMode, CreateSwapStep};
+use crate::actions::{Action, DeviceOp, DeviceOpKind, SortColumn, SortDir};
+use crate::create_swap::CreateSwapModal;
 use crate::platform::{Capabilities, MemSnapshot, ProcessRow, SwapDevice};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -187,6 +187,8 @@ impl AppState {
         }
     }
 }
+
+mod snapshot;
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
