@@ -2,6 +2,7 @@ pub(crate) mod create_swap;
 mod design;
 mod devices;
 mod overview;
+pub(crate) mod process_detail;
 mod processes;
 mod statusbar;
 
@@ -30,6 +31,10 @@ pub fn render(f: &mut Frame, state: &AppState) {
     }
 
     statusbar::render(f, layout[2], state);
+
+    if state.selected_process_detail.is_some() {
+        process_detail::render(f, state);
+    }
 }
 
 fn build_layout(area: Rect) -> Rc<[Rect]> {

@@ -28,6 +28,11 @@ impl PlatformProvider for WindowsBackend {
     fn swap_off(&self, _device: &Path) -> Result<()> {
         color_eyre::eyre::bail!("not supported on Windows")
     }
+    fn kill_process(&self, _pid: u32) -> Result<()> {
+        Err(color_eyre::eyre::eyre!(
+            "kill_process not supported on Windows"
+        ))
+    }
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             can_swap_on: false,

@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -20,6 +20,14 @@ pub struct ConfirmOffDelete {
     pub active: bool,
 }
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // wired in Tasks 7-11
+pub struct ProcessHistory {
+    pub rss_history: VecDeque<(Instant, u64)>,
+    pub swap_history: VecDeque<(Instant, u64)>,
+}
+
+#[allow(dead_code)] // wired in Tasks 7-11
 pub struct AppState {
     pub active_tab: Tab,
     pub ram_history: VecDeque<(Instant, u64)>,
@@ -46,6 +54,9 @@ pub struct AppState {
     pub collect_in_progress: bool,
     pub last_collect_completed: Instant,
     pub device_op_started: Option<Instant>,
+    pub process_history: HashMap<u32, ProcessHistory>,
+    pub selected_process_detail: Option<u32>,
+    pub process_detail_confirm_kill: bool,
 }
 
 impl AppState {
@@ -76,6 +87,9 @@ impl AppState {
             collect_in_progress: false,
             last_collect_completed: Instant::now(),
             device_op_started: None,
+            process_history: HashMap::new(),
+            selected_process_detail: None,
+            process_detail_confirm_kill: false,
         }
     }
 
@@ -189,6 +203,15 @@ impl AppState {
             Action::RequestConfirmOffDelete => self.handle_request_confirm_off_delete(),
             Action::ToggleConfirmDeleteFile => self.handle_toggle_confirm_delete_file(),
             Action::CancelConfirmOffDelete => self.handle_cancel_confirm_off_delete(),
+            Action::OpenProcessDetail { pid } => self.handle_open_process_detail(pid),
+            Action::CloseProcessDetail => self.handle_close_process_detail(),
+            Action::ConfirmKillProcess { pid } => self.handle_confirm_kill_process(pid),
+            Action::KillProcess { .. } => {
+                // intercepted by main.rs, never reaches reducer
+            }
+            Action::KillProcessResult { success, msg, .. } => {
+                self.handle_kill_process_result(success, msg.clone());
+            }
         }
     }
 }
@@ -240,6 +263,8 @@ pub(crate) mod test_helpers {
             rss: 0,
             swap,
             cpu_pct: 0.0,
+            threads: 1,
+            status: 'S',
         }
     }
 }

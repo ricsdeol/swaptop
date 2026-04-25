@@ -38,6 +38,11 @@ pub struct CreateSwapContext {
     pub has_error_step: bool,
 }
 
+pub struct ProcessDetailContext {
+    pub pid: u32,
+    pub show_kill_confirm: bool,
+}
+
 pub struct KeyContext {
     pub active_tab: Tab,
     pub filter_mode: bool,
@@ -45,6 +50,7 @@ pub struct KeyContext {
     pub is_root: bool,
     pub device: DeviceContext,
     pub create_swap: Option<CreateSwapContext>,
+    pub process_detail: Option<ProcessDetailContext>,
 }
 
 impl KeyContext {
@@ -93,6 +99,11 @@ impl KeyContext {
             }
         });
 
+        let process_detail = s.selected_process_detail.map(|pid| ProcessDetailContext {
+            pid,
+            show_kill_confirm: s.process_detail_confirm_kill,
+        });
+
         Self {
             active_tab: s.active_tab.clone(),
             filter_mode: s.filter_mode,
@@ -100,6 +111,7 @@ impl KeyContext {
             is_root: s.is_root,
             device,
             create_swap,
+            process_detail,
         }
     }
 }
@@ -116,6 +128,22 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     if let Some(ref cs) = ctx.create_swap {
         return handle_create_swap_key(key, cs);
+    }
+
+    if let Some(ref detail) = ctx.process_detail {
+        return match key.code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('n') if detail.show_kill_confirm => {
+                Some(Action::CloseProcessDetail)
+            }
+            KeyCode::Esc | KeyCode::Char('q') => Some(Action::CloseProcessDetail),
+            KeyCode::Char('k') if !detail.show_kill_confirm => {
+                Some(Action::ConfirmKillProcess { pid: detail.pid })
+            }
+            KeyCode::Char('y') if detail.show_kill_confirm => {
+                Some(Action::KillProcess { pid: detail.pid })
+            }
+            _ => None,
+        };
     }
 
     match key.code {
@@ -139,6 +167,7 @@ pub fn resolve_key(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                 return Some(Action::SortBy(next_sort_column(&ctx.sort_col)));
             }
             KeyCode::Char('/') => return Some(Action::EnterFilterMode),
+            KeyCode::Enter => return Some(Action::OpenProcessDetail { pid: 0 }), // placeholder, filled by main.rs
             _ => {}
         },
         Tab::Devices => {
@@ -435,6 +464,7 @@ mod tests {
                     confirm_off_delete: None,
                 },
                 create_swap: None,
+                process_detail: None,
             },
         )
     }
@@ -627,6 +657,7 @@ mod tests {
                 }),
             },
             create_swap: None,
+            process_detail: None,
         }
     }
 
@@ -668,6 +699,88 @@ mod tests {
             matches!(action, Some(Action::CancelConfirmOffDelete)),
             "expected CancelConfirmOffDelete, got {action:?}"
         );
+    }
+
+    fn make_detail_ctx(pid: u32, confirm: bool) -> KeyContext {
+        KeyContext {
+            active_tab: Tab::Processes,
+            filter_mode: false,
+            sort_col: SortColumn::Swap,
+            is_root: false,
+            device: default_device(),
+            create_swap: None,
+            process_detail: Some(ProcessDetailContext {
+                pid,
+                show_kill_confirm: confirm,
+            }),
+        }
+    }
+
+    #[test]
+    fn enter_opens_detail_on_processes_tab() {
+        let ctx = KeyContext {
+            active_tab: Tab::Processes,
+            filter_mode: false,
+            sort_col: SortColumn::Swap,
+            is_root: false,
+            device: default_device(),
+            create_swap: None,
+            process_detail: None,
+        };
+        let action = resolve_key(key(KeyCode::Enter), &ctx);
+        assert!(matches!(action, Some(Action::OpenProcessDetail { .. })));
+    }
+
+    #[test]
+    fn esc_closes_detail_when_no_confirm() {
+        let ctx = make_detail_ctx(42, false);
+        let action = resolve_key(key(KeyCode::Esc), &ctx);
+        assert!(matches!(action, Some(Action::CloseProcessDetail)));
+    }
+
+    #[test]
+    fn esc_cancels_confirm_when_active() {
+        let ctx = make_detail_ctx(42, true);
+        let action = resolve_key(key(KeyCode::Esc), &ctx);
+        assert!(matches!(action, Some(Action::CloseProcessDetail)));
+    }
+
+    #[test]
+    fn q_closes_detail() {
+        let ctx = make_detail_ctx(42, false);
+        let action = resolve_key(key(KeyCode::Char('q')), &ctx);
+        assert!(matches!(action, Some(Action::CloseProcessDetail)));
+    }
+
+    #[test]
+    fn k_triggers_confirm_kill() {
+        let ctx = make_detail_ctx(42, false);
+        let action = resolve_key(key(KeyCode::Char('k')), &ctx);
+        assert!(matches!(
+            action,
+            Some(Action::ConfirmKillProcess { pid: 42 })
+        ));
+    }
+
+    #[test]
+    fn y_confirms_kill_when_confirming() {
+        let ctx = make_detail_ctx(42, true);
+        let action = resolve_key(key(KeyCode::Char('y')), &ctx);
+        assert!(matches!(action, Some(Action::KillProcess { pid: 42 })));
+    }
+
+    #[test]
+    fn n_cancels_kill_confirm() {
+        let ctx = make_detail_ctx(42, true);
+        let action = resolve_key(key(KeyCode::Char('n')), &ctx);
+        assert!(matches!(action, Some(Action::CloseProcessDetail)));
+    }
+
+    #[test]
+    fn other_keys_ignored_in_detail_mode() {
+        let ctx = make_detail_ctx(42, false);
+        let action = resolve_key(key(KeyCode::Char('x')), &ctx);
+        assert!(action.is_none());
     }
 
     #[test]

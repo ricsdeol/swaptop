@@ -60,6 +60,8 @@ pub struct ProcessRow {
     pub rss: u64,
     pub swap: u64,
     pub cpu_pct: f32,
+    pub threads: u32,
+    pub status: char,
 }
 
 #[derive(Debug, Clone)]

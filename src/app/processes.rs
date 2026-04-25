@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::actions::{SortColumn, SortDir};
 use crate::app::AppState;
 
@@ -57,6 +59,31 @@ impl AppState {
 
     pub(crate) fn handle_exit_filter_mode(&mut self) {
         self.filter_mode = false;
+    }
+
+    pub(crate) fn handle_open_process_detail(&mut self, pid: u32) {
+        self.selected_process_detail = Some(pid);
+        self.process_detail_confirm_kill = false;
+    }
+
+    pub(crate) fn handle_close_process_detail(&mut self) {
+        self.selected_process_detail = None;
+        self.process_detail_confirm_kill = false;
+    }
+
+    pub(crate) fn handle_confirm_kill_process(&mut self, _pid: u32) {
+        self.process_detail_confirm_kill = true;
+    }
+
+    pub(crate) fn handle_kill_process_result(&mut self, success: bool, msg: Option<String>) {
+        if success {
+            self.selected_process_detail = None;
+            self.process_detail_confirm_kill = false;
+            self.error_msg = Some(("Sent SIGTERM to process".to_string(), Instant::now()));
+        } else {
+            let text = msg.unwrap_or_else(|| "Failed to kill process".into());
+            self.error_msg = Some((text, Instant::now()));
+        }
     }
 }
 
@@ -204,5 +231,71 @@ mod tests {
         state.handle_action(Action::UpdateSnapshot(snap));
         state.filter_text = "/opt/firefox".to_string();
         assert_eq!(state.filtered_len(), 1);
+    }
+
+    #[test]
+    fn open_process_detail_sets_pid_and_clears_confirm_kill() {
+        let mut state = AppState::new(make_caps());
+        state.process_detail_confirm_kill = true;
+        state.handle_action(Action::OpenProcessDetail { pid: 42 });
+        assert_eq!(state.selected_process_detail, Some(42));
+        assert!(!state.process_detail_confirm_kill);
+    }
+
+    #[test]
+    fn close_process_detail_clears_pid_and_confirm_kill() {
+        let mut state = AppState::new(make_caps());
+        state.selected_process_detail = Some(42);
+        state.process_detail_confirm_kill = true;
+        state.handle_action(Action::CloseProcessDetail);
+        assert!(state.selected_process_detail.is_none());
+        assert!(!state.process_detail_confirm_kill);
+    }
+
+    #[test]
+    fn close_process_detail_when_not_confirming_clears_only_pid() {
+        let mut state = AppState::new(make_caps());
+        state.selected_process_detail = Some(42);
+        state.process_detail_confirm_kill = false;
+        state.handle_action(Action::CloseProcessDetail);
+        assert!(state.selected_process_detail.is_none());
+        assert!(!state.process_detail_confirm_kill);
+    }
+
+    #[test]
+    fn confirm_kill_process_sets_flag() {
+        let mut state = AppState::new(make_caps());
+        state.selected_process_detail = Some(42);
+        state.handle_action(Action::ConfirmKillProcess { pid: 42 });
+        assert!(state.process_detail_confirm_kill);
+    }
+
+    #[test]
+    fn kill_process_result_success_closes_modal() {
+        let mut state = AppState::new(make_caps());
+        state.selected_process_detail = Some(42);
+        state.process_detail_confirm_kill = true;
+        state.handle_action(Action::KillProcessResult {
+            pid: 42,
+            success: true,
+            msg: None,
+        });
+        assert!(state.selected_process_detail.is_none());
+        assert!(!state.process_detail_confirm_kill);
+        assert!(state.error_msg.is_some());
+    }
+
+    #[test]
+    fn kill_process_result_failure_keeps_modal_and_sets_error() {
+        let mut state = AppState::new(make_caps());
+        state.selected_process_detail = Some(42);
+        state.process_detail_confirm_kill = true;
+        state.handle_action(Action::KillProcessResult {
+            pid: 42,
+            success: false,
+            msg: Some("Permission denied".into()),
+        });
+        assert_eq!(state.selected_process_detail, Some(42));
+        assert!(state.error_msg.is_some());
     }
 }
