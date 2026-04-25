@@ -189,6 +189,9 @@ impl AppState {
             Action::RequestConfirmOffDelete => self.handle_request_confirm_off_delete(),
             Action::ToggleConfirmDeleteFile => self.handle_toggle_confirm_delete_file(),
             Action::CancelConfirmOffDelete => self.handle_cancel_confirm_off_delete(),
+            Action::KillProcessResult { .. } => {
+                // TODO: handle kill process result (Task 4 wires bridge only)
+            }
         }
     }
 }

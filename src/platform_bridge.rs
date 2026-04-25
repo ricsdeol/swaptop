@@ -20,6 +20,8 @@ pub enum PlatformCommand {
         activate_after: bool,
         activate_only: bool,
     },
+    #[allow(dead_code)] // wired in Task 10
+    KillProcess { pid: u32 },
     Shutdown,
 }
 
@@ -65,6 +67,14 @@ impl PlatformBridge {
                                 let _ = tx.send(Action::CreateSwapProgress(progress));
                             }
                         });
+                    }
+                    PlatformCommand::KillProcess { pid } => {
+                        let result = backend.kill_process(pid);
+                        let action = match result {
+                            Ok(()) => Action::KillProcessResult { pid, success: true, msg: None },
+                            Err(e) => Action::KillProcessResult { pid, success: false, msg: Some(e.to_string()) },
+                        };
+                        let _ = action_tx.send(action);
                     }
                     PlatformCommand::Shutdown => break,
                 }
@@ -397,6 +407,29 @@ mod tests {
             matches!(third, Action::CollectFinished),
             "expected CollectFinished, got {third:?}"
         );
+    }
+
+    #[test]
+    fn kill_process_sends_result() {
+        let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel();
+        let processes_active = Arc::new(AtomicBool::new(false));
+        let bridge = PlatformBridge::spawn_with_backend(
+            Box::new(MockBackend::healthy()),
+            action_tx,
+            processes_active,
+        );
+        bridge.send(PlatformCommand::KillProcess { pid: 1234 });
+        bridge.send(PlatformCommand::Shutdown);
+        drop(bridge);
+
+        let action = recv_action(&mut action_rx);
+        if let Action::KillProcessResult { pid, success, msg } = action {
+            assert_eq!(pid, 1234);
+            assert!(success);
+            assert!(msg.is_none());
+        } else {
+            panic!("expected KillProcessResult, got {action:?}");
+        }
     }
 
     #[test]

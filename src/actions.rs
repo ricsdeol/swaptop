@@ -84,6 +84,8 @@ pub enum Action {
     RequestConfirmOffDelete,
     ToggleConfirmDeleteFile,
     CancelConfirmOffDelete,
+    #[allow(dead_code)] // wired in Task 8
+    KillProcessResult { pid: u32, success: bool, msg: Option<String> },
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
