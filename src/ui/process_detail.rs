@@ -1,6 +1,6 @@
 use human_bytes::human_bytes;
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols,
     text::{Line, Span, Text},
@@ -9,15 +9,15 @@ use ratatui::{
 
 use crate::app::AppState;
 
-pub fn render(f: &mut ratatui::Frame, state: &AppState) {
-    let area = centered_rect(70, 70, f.area());
-    f.render_widget(Clear, area); // clear background
+pub fn render(frame: &mut ratatui::Frame, state: &AppState) {
+    let area = centered_rect(70, 70, frame.area());
+    frame.render_widget(Clear, area); // clear background
 
     let block = Block::default()
         .title(" Process Detail ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
-    f.render_widget(block.clone(), area);
+    frame.render_widget(block.clone(), area);
 
     let inner = block.inner(area);
     let layout = build_layout(inner);
@@ -25,18 +25,18 @@ pub fn render(f: &mut ratatui::Frame, state: &AppState) {
     let pid = state.selected_process_detail.unwrap_or(0);
 
     // Metadata
-    render_metadata(f, layout[0], state, pid);
+    render_metadata(frame, layout[0], state, pid);
 
     // Charts
     if layout[1].height >= 5 {
-        render_charts(f, layout[1], state, pid);
+        render_charts(frame, layout[1], state, pid);
     }
 
     // Footer
-    render_footer(f, layout[2], state, pid);
+    render_footer(frame, layout[2], state, pid);
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -44,7 +44,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage(percent_y),
             Constraint::Percentage((100 - percent_y) / 2),
         ])
-        .split(r);
+        .split(area);
 
     Layout::default()
         .direction(Direction::Horizontal)
@@ -67,15 +67,15 @@ fn build_layout(area: Rect) -> std::rc::Rc<[Rect]> {
         .split(area)
 }
 
-fn render_metadata(f: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u32) {
-    let proc = find_process(state, pid);
-    let (name, user, threads, status, exe_path) = if let Some(p) = proc {
+fn render_metadata(frame: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u32) {
+    let process_row = find_process(state, pid);
+    let (name, user, threads, status, exe_path) = if let Some(process) = process_row {
         (
-            p.name.clone(),
-            p.user.clone(),
-            p.threads,
-            p.status,
-            p.exe_path.clone(),
+            process.name.clone(),
+            process.user.clone(),
+            process.threads,
+            process.status,
+            process.exe_path.clone(),
         )
     } else {
         ("(process ended)".into(), "?".into(), 0, '?', None)
@@ -126,51 +126,75 @@ fn render_metadata(f: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u3
         },
     ];
 
-    let p = Paragraph::new(Text::from(lines));
-    f.render_widget(p, area);
+    let paragraph = Paragraph::new(Text::from(lines));
+    frame.render_widget(paragraph, area);
 }
 
-fn render_charts(f: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u32) {
+fn render_charts(frame: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u32) {
     let parts = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .spacing(2)
         .split(area);
 
-    // Each chart has Block::bordered() which uses 2 columns (left+right borders)
-    let chart_width = (parts[0].width as usize).saturating_sub(2).max(1);
-
     let start = state.start_time;
-    let now_secs = start.elapsed().as_secs_f64();
-    let hist = state.process_history.get(&pid);
+    let history_option = state.process_history.get(&pid);
 
-    // Slice only the last N points that fit visually (1 point ≈ 1 column)
-    let (ram_data, swap_data, ram_max, swap_max, visible_points) = if let Some(h) = hist {
-        let take = chart_width.min(h.rss_history.len());
-        let ram: Vec<(f64, f64)> = h
+    // Convert history to chart data points (x = seconds since start, y = bytes)
+    let (
+        ram_history_points,
+        swap_history_points,
+        ram_initial_value,
+        ram_maximum_value,
+        swap_initial_value,
+        swap_maximum_value,
+    ) = if let Some(history) = history_option {
+        let ram_points: Vec<(f64, f64)> = history
             .rss_history
             .iter()
-            .skip(h.rss_history.len().saturating_sub(take))
-            .map(|(t, v)| (t.duration_since(start).as_secs_f64(), *v as f64))
+            .map(|(timestamp, value)| {
+                (timestamp.duration_since(start).as_secs_f64(), *value as f64)
+            })
             .collect();
-        let swap: Vec<(f64, f64)> = h
+        let swap_points: Vec<(f64, f64)> = history
             .swap_history
             .iter()
-            .skip(h.swap_history.len().saturating_sub(take))
-            .map(|(t, v)| (t.duration_since(start).as_secs_f64(), *v as f64))
+            .map(|(timestamp, value)| {
+                (timestamp.duration_since(start).as_secs_f64(), *value as f64)
+            })
             .collect();
-        let ram_max = ram.iter().map(|(_, y)| *y).fold(1.0, f64::max);
-        let swap_max = swap.iter().map(|(_, y)| *y).fold(1.0, f64::max);
-        (ram, swap, ram_max, swap_max, take)
+        let ram_initial = ram_points.first().map(|(_, value)| *value).unwrap_or(0.0);
+        let ram_maximum = ram_points
+            .iter()
+            .map(|(_, value)| *value)
+            .fold(1.0, f64::max);
+        let swap_initial = swap_points.first().map(|(_, value)| *value).unwrap_or(0.0);
+        let swap_maximum = swap_points
+            .iter()
+            .map(|(_, value)| *value)
+            .fold(1.0, f64::max);
+        (
+            ram_points,
+            swap_points,
+            ram_initial,
+            ram_maximum,
+            swap_initial,
+            swap_maximum,
+        )
     } else {
-        (vec![], vec![], 1.0, 1.0, 0)
+        (vec![], vec![], 0.0, 1.0, 0.0, 1.0)
     };
 
-    // Dynamic window based on how many points actually fit on screen
-    let window_secs = visible_points as f64;
-    let x_max = now_secs;
-    let x_min = (x_max - window_secs).max(0.0);
+    let elapsed_seconds = start.elapsed().as_secs_f64();
+    let window_seconds = 900.0_f64; // 15 minutes in seconds
+    let x_axis_maximum = elapsed_seconds.max(window_seconds);
+    let x_axis_minimum = (x_axis_maximum - window_seconds).max(0.0);
 
-    let left_label = format_time_label(window_secs);
+    // Y-axis bounds with the *initial* value centered (add 20% padding around data range)
+    let (ram_axis_minimum, ram_axis_maximum) =
+        centered_y_bounds(ram_initial_value, ram_maximum_value);
+    let (swap_axis_minimum, swap_axis_maximum) =
+        centered_y_bounds(swap_initial_value, swap_maximum_value);
 
     // RAM Chart
     let ram_datasets = vec![
@@ -179,29 +203,41 @@ fn render_charts(f: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u32)
             .marker(symbols::Marker::Braille)
             .graph_type(GraphType::Line)
             .style(Style::default().fg(Color::Cyan))
-            .data(&ram_data),
+            .data(&ram_history_points),
     ];
     let ram_chart = Chart::new(ram_datasets)
         .block(Block::bordered().title(" RAM History "))
         .x_axis(
             Axis::default()
                 .style(Style::default().fg(Color::DarkGray))
-                .bounds([x_min, x_max])
+                .bounds([x_axis_minimum, x_axis_maximum])
                 .labels(vec![
-                    Span::styled(left_label.clone(), Style::default().fg(Color::DarkGray)),
+                    Span::styled("-15m", Style::default().fg(Color::DarkGray)),
                     Span::styled("now", Style::default().fg(Color::DarkGray)),
                 ]),
         )
         .y_axis(
             Axis::default()
                 .style(Style::default().fg(Color::DarkGray))
-                .bounds([0.0, ram_max])
+                .bounds([ram_axis_minimum, ram_axis_maximum])
                 .labels(vec![
-                    Span::styled(human_bytes(0.0), Style::default().fg(Color::DarkGray)),
-                    Span::styled(human_bytes(ram_max), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        human_bytes(ram_axis_minimum),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(
+                        human_bytes(ram_initial_value),
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        human_bytes(ram_axis_maximum),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ]),
         );
-    f.render_widget(ram_chart, parts[0]);
+    frame.render_widget(ram_chart, parts[0]);
 
     // Swap Chart
     let swap_datasets = vec![
@@ -210,58 +246,58 @@ fn render_charts(f: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u32)
             .marker(symbols::Marker::Braille)
             .graph_type(GraphType::Line)
             .style(Style::default().fg(Color::Magenta))
-            .data(&swap_data),
+            .data(&swap_history_points),
     ];
     let swap_chart = Chart::new(swap_datasets)
         .block(Block::bordered().title(" Swap History "))
         .x_axis(
             Axis::default()
                 .style(Style::default().fg(Color::DarkGray))
-                .bounds([x_min, x_max])
+                .bounds([x_axis_minimum, x_axis_maximum])
                 .labels(vec![
-                    Span::styled(left_label, Style::default().fg(Color::DarkGray)),
+                    Span::styled("-15m", Style::default().fg(Color::DarkGray)),
                     Span::styled("now", Style::default().fg(Color::DarkGray)),
                 ]),
         )
         .y_axis(
             Axis::default()
                 .style(Style::default().fg(Color::DarkGray))
-                .bounds([0.0, swap_max])
+                .bounds([swap_axis_minimum, swap_axis_maximum])
                 .labels(vec![
-                    Span::styled(human_bytes(0.0), Style::default().fg(Color::DarkGray)),
-                    Span::styled(human_bytes(swap_max), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        human_bytes(swap_axis_minimum),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                    Span::styled(
+                        human_bytes(swap_initial_value),
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        human_bytes(swap_axis_maximum),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ]),
         );
-    f.render_widget(swap_chart, parts[1]);
-
-    // Short history message overlay
-    if ram_data.len() < 10 {
-        let msg = Paragraph::new(format!(
-            "Collecting history... ({}/{})",
-            ram_data.len(),
-            chart_width
-        ))
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Yellow));
-        f.render_widget(msg, parts[0]);
-    }
+    frame.render_widget(swap_chart, parts[1]);
 }
 
-/// Format a duration in seconds into a compact human label.
-fn format_time_label(seconds: f64) -> String {
-    if seconds < 60.0 {
-        format!("-{:.0}s", seconds)
-    } else if seconds < 3600.0 {
-        format!("-{:.0}m", seconds / 60.0)
-    } else {
-        format!("-{:.0}h", seconds / 3600.0)
-    }
+/// Compute Y-axis bounds that place the given center value in the vertical middle.
+/// Adds 20% padding around the [0, max] data range.  If the center value is
+/// near zero the lower bound is clamped to 0 so the axis never go negative.
+fn centered_y_bounds(center: f64, max_value: f64) -> (f64, f64) {
+    let range = max_value.max(center * 2.0) * 1.2;
+    let half = range / 2.0;
+    let y_min = (center - half).max(0.0);
+    let y_max = center + half;
+    (y_min, y_max)
 }
 
-fn render_footer(f: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u32) {
-    let proc = find_process(state, pid);
-    let (rss, swap) = if let Some(p) = proc {
-        (p.rss, p.swap)
+fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u32) {
+    let process_row = find_process(state, pid);
+    let (rss, swap) = if let Some(process) = process_row {
+        (process.rss, process.swap)
     } else {
         (0, 0)
     };
@@ -324,15 +360,16 @@ fn render_footer(f: &mut ratatui::Frame, area: Rect, state: &AppState, pid: u32)
                 ),
                 Span::styled(" back", Style::default().fg(Color::DarkGray)),
             ]),
+            Line::from(""), // bottom margin
         ]
     };
 
-    let p = Paragraph::new(Text::from(lines));
-    f.render_widget(p, area);
+    let paragraph = Paragraph::new(Text::from(lines));
+    frame.render_widget(paragraph, area);
 }
 
 fn find_process(state: &AppState, pid: u32) -> Option<&crate::platform::ProcessRow> {
-    state.processes.iter().find(|p| p.pid == pid)
+    state.processes.iter().find(|process| process.pid == pid)
 }
 
 #[cfg(test)]
@@ -355,20 +392,5 @@ mod tests {
         let area = Rect::new(0, 0, 80, 24);
         let layout = build_layout(area);
         assert_eq!(layout.len(), 3);
-    }
-
-    #[test]
-    fn format_time_label_seconds() {
-        assert_eq!(format_time_label(45.0), "-45s");
-    }
-
-    #[test]
-    fn format_time_label_minutes() {
-        assert_eq!(format_time_label(120.0), "-2m");
-    }
-
-    #[test]
-    fn format_time_label_hours() {
-        assert_eq!(format_time_label(7200.0), "-2h");
     }
 }
