@@ -1,12 +1,14 @@
+use std::collections::VecDeque;
 use std::time::Instant;
 
-use crate::app::AppState;
+use crate::app::{AppState, ProcessHistory};
 use crate::platform::MemSnapshot;
 
 impl AppState {
     pub(crate) fn apply_snapshot(&mut self, snapshot: MemSnapshot) {
         // 1. History
         self.push_history(&snapshot);
+        self.push_process_history(&snapshot);
 
         // 2. Domain data
         self.devices = snapshot.devices.clone();
@@ -34,6 +36,23 @@ impl AppState {
         }
         while self.swap_history.len() > self.max_history {
             self.swap_history.pop_front();
+        }
+    }
+
+    fn push_process_history(&mut self, snapshot: &MemSnapshot) {
+        for proc in &snapshot.processes {
+            let entry = self.process_history.entry(proc.pid).or_insert_with(|| ProcessHistory {
+                rss_history: VecDeque::new(),
+                swap_history: VecDeque::new(),
+            });
+            entry.rss_history.push_back((snapshot.timestamp, proc.rss));
+            entry.swap_history.push_back((snapshot.timestamp, proc.swap));
+            while entry.rss_history.len() > 900 {
+                entry.rss_history.pop_front();
+            }
+            while entry.swap_history.len() > 900 {
+                entry.swap_history.pop_front();
+            }
         }
     }
 
@@ -176,5 +195,55 @@ mod tests {
         snap.devices = vec![make_device("/dev/sda2")];
         state.handle_action(Action::UpdateSnapshot(snap));
         assert_eq!(state.selected_dev, 0);
+    }
+
+    #[test]
+    fn snapshot_appends_process_history_for_each_row() {
+        let mut state = AppState::new(make_caps());
+        let mut snap = make_snapshot();
+        snap.processes = vec![make_process(1, "a", 100), make_process(2, "b", 200)];
+        state.handle_action(Action::UpdateSnapshot(snap));
+        assert!(state.process_history.contains_key(&1));
+        assert!(state.process_history.contains_key(&2));
+        assert_eq!(state.process_history[&1].rss_history.len(), 1);
+        assert_eq!(state.process_history[&1].swap_history.len(), 1);
+    }
+
+    #[test]
+    fn process_history_capped_at_900_entries() {
+        let mut state = AppState::new(make_caps());
+        for _ in 0..1000 {
+            let mut snap = make_snapshot();
+            snap.processes = vec![make_process(1, "a", 100)];
+            state.handle_action(Action::UpdateSnapshot(snap));
+        }
+        assert_eq!(state.process_history[&1].rss_history.len(), 900);
+        assert_eq!(state.process_history[&1].swap_history.len(), 900);
+    }
+
+    #[test]
+    fn process_history_retained_when_pid_leaves_snapshot() {
+        let mut state = AppState::new(make_caps());
+        let mut snap = make_snapshot();
+        snap.processes = vec![make_process(1, "a", 100)];
+        state.handle_action(Action::UpdateSnapshot(snap));
+
+        let snap2 = make_snapshot(); // processes = vec![]
+        state.handle_action(Action::UpdateSnapshot(snap2));
+
+        assert!(state.process_history.contains_key(&1));
+        assert_eq!(state.process_history[&1].rss_history.len(), 1);
+    }
+
+    #[test]
+    fn process_history_resumed_when_pid_returns() {
+        let mut state = AppState::new(make_caps());
+        let mut snap = make_snapshot();
+        snap.processes = vec![make_process(1, "a", 100)];
+        state.handle_action(Action::UpdateSnapshot(snap.clone()));
+        state.handle_action(Action::UpdateSnapshot(make_snapshot())); // empty
+        state.handle_action(Action::UpdateSnapshot(snap)); // returns
+
+        assert_eq!(state.process_history[&1].rss_history.len(), 2);
     }
 }
