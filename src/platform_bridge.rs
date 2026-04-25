@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::actions::{Action, DeviceOp, DeviceOpKind, OpStatus};
-use crate::platform::{MemSnapshot, SwapBackend};
+use crate::platform::{CreateSwapProgress, MemSnapshot, PlatformProvider};
 
 pub enum PlatformCommand {
     Collect,
@@ -29,7 +29,7 @@ pub struct PlatformBridge {
 
 impl PlatformBridge {
     pub fn spawn_with_backend(
-        mut backend: Box<dyn SwapBackend>,
+        mut backend: Box<dyn PlatformProvider>,
         action_tx: UnboundedSender<Action>,
         processes_active: Arc<AtomicBool>,
     ) -> Self {
@@ -51,16 +51,16 @@ impl PlatformBridge {
                         activate_only,
                     } => {
                         let tx = action_tx.clone();
-                        std::thread::spawn(move || {
-                            crate::platform::linux::create_swap::run_create_swap_steps(
-                                path,
-                                size_bytes,
-                                priority,
-                                activate_after,
-                                activate_only,
-                                tx,
-                            );
-                        });
+                        backend.create_swap_file(
+                            path,
+                            size_bytes,
+                            priority,
+                            activate_after,
+                            activate_only,
+                            Box::new(move |progress: CreateSwapProgress| {
+                                let _ = tx.send(Action::CreateSwapProgress(progress));
+                            }),
+                        );
                     }
                     PlatformCommand::Shutdown => break,
                 }
@@ -74,7 +74,7 @@ impl PlatformBridge {
     }
 
     fn handle_collect(
-        backend: &mut dyn SwapBackend,
+        backend: &mut dyn PlatformProvider,
         action_tx: &UnboundedSender<Action>,
         processes_active: &AtomicBool,
     ) {
@@ -106,7 +106,7 @@ impl PlatformBridge {
     }
 
     fn handle_device_op(
-        backend: &mut dyn SwapBackend,
+        backend: &mut dyn PlatformProvider,
         action_tx: &UnboundedSender<Action>,
         path: PathBuf,
         kind: DeviceOpKind,
@@ -133,7 +133,7 @@ impl PlatformBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::{Capabilities, ProcessRow, SwapBackend, SwapDevice, SwapInfo};
+    use crate::platform::{Capabilities, PlatformProvider, ProcessRow, SwapDevice, SwapInfo};
     use std::path::Path;
     use std::sync::atomic::AtomicBool;
 
@@ -171,7 +171,7 @@ mod tests {
         }
     }
 
-    impl SwapBackend for MockBackend {
+    impl PlatformProvider for MockBackend {
         fn system_ram(&mut self) -> color_eyre::Result<SwapInfo> {
             if self.fail {
                 return Err(color_eyre::eyre::eyre!("mock ram error"));

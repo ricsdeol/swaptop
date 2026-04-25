@@ -384,25 +384,28 @@ impl AppState {
                     ];
                     if activate_only {
                         for step in steps.iter_mut().take(6) {
-                            step.status = crate::create_swap::StepStatus::Done;
+                            step.status = crate::platform::StepStatus::Done;
                         }
                     }
                     modal.mode = CreateSwapMode::Progress { steps };
                 }
             }
 
-            Action::OpenConfirmActivateOnly { path, size_bytes } => {
+            Action::CreateSwapProgress(progress) => {
+                use crate::platform::CreateSwapProgress;
                 if let Some(modal) = self.create_swap_modal.as_mut() {
-                    modal.mode = CreateSwapMode::ConfirmActivateOnly { path, size_bytes };
-                }
-            }
-
-            Action::CreateSwapStepUpdate { index, status } => {
-                if let Some(modal) = self.create_swap_modal.as_mut()
-                    && let CreateSwapMode::Progress { steps } = &mut modal.mode
-                    && let Some(step) = steps.get_mut(index)
-                {
-                    step.status = status;
+                    match progress {
+                        CreateSwapProgress::StepUpdate { index, status } => {
+                            if let CreateSwapMode::Progress { steps } = &mut modal.mode
+                                && let Some(step) = steps.get_mut(index)
+                            {
+                                step.status = status;
+                            }
+                        }
+                        CreateSwapProgress::ConfirmActivateOnly { path, size_bytes } => {
+                            modal.mode = CreateSwapMode::ConfirmActivateOnly { path, size_bytes };
+                        }
+                    }
                 }
             }
 
@@ -928,7 +931,8 @@ mod tests {
 
     #[test]
     fn step_update_replaces_status_at_index() {
-        use crate::create_swap::{CreateSwapMode, StepStatus};
+        use crate::create_swap::CreateSwapMode;
+        use crate::platform::{CreateSwapProgress, StepStatus};
         use tui_input::Input;
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::OpenCreateSwap);
@@ -936,10 +940,10 @@ mod tests {
         state.handle_action(Action::CreateSwapSubmit {
             activate_only: false,
         });
-        state.handle_action(Action::CreateSwapStepUpdate {
+        state.handle_action(Action::CreateSwapProgress(CreateSwapProgress::StepUpdate {
             index: 0,
             status: StepStatus::Running,
-        });
+        }));
         let modal = state.create_swap_modal.as_ref().unwrap();
         match &modal.mode {
             CreateSwapMode::Progress { steps } => {
@@ -976,13 +980,16 @@ mod tests {
     #[test]
     fn open_confirm_activate_only_switches_mode() {
         use crate::create_swap::CreateSwapMode;
+        use crate::platform::CreateSwapProgress;
         use std::path::PathBuf;
         let mut state = AppState::new(make_caps());
         state.handle_action(Action::OpenCreateSwap);
-        state.handle_action(Action::OpenConfirmActivateOnly {
-            path: PathBuf::from("/swapfile"),
-            size_bytes: 2_147_483_648,
-        });
+        state.handle_action(Action::CreateSwapProgress(
+            CreateSwapProgress::ConfirmActivateOnly {
+                path: PathBuf::from("/swapfile"),
+                size_bytes: 2_147_483_648,
+            },
+        ));
         let modal = state.create_swap_modal.as_ref().unwrap();
         match &modal.mode {
             CreateSwapMode::ConfirmActivateOnly { path, size_bytes } => {

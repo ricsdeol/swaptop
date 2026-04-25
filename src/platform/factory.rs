@@ -1,6 +1,6 @@
-use super::SwapBackend;
+use super::PlatformProvider;
 
-pub fn detect() -> Box<dyn SwapBackend> {
+pub fn detect() -> Box<dyn PlatformProvider> {
     #[cfg(target_os = "linux")]
     return Box::new(super::linux::LinuxBackend::new());
 

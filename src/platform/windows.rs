@@ -2,7 +2,7 @@ use std::path::Path;
 
 use color_eyre::Result;
 
-use super::{Capabilities, SwapBackend, SwapDevice, SwapInfo};
+use super::{Capabilities, PlatformProvider, SwapDevice, SwapInfo};
 
 pub struct WindowsBackend;
 
@@ -12,7 +12,7 @@ impl WindowsBackend {
     }
 }
 
-impl SwapBackend for WindowsBackend {
+impl PlatformProvider for WindowsBackend {
     fn system_ram(&mut self) -> Result<SwapInfo> {
         color_eyre::eyre::bail!("Windows backend not yet implemented")
     }

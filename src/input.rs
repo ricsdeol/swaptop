@@ -4,7 +4,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::actions::{Action, DeviceOpKind, SortColumn};
 use crate::app::{AppState, Tab};
-use crate::create_swap::{CreateSwapField, CreateSwapMode, StepStatus};
+use crate::create_swap::{CreateSwapField, CreateSwapMode};
+use crate::platform::StepStatus;
 use crate::platform::SwapKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

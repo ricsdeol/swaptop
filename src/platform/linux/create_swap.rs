@@ -4,11 +4,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command as StdCommand;
 
-use tokio::sync::mpsc::UnboundedSender;
-
-use crate::actions::Action;
-use crate::create_swap::StepStatus;
-use crate::platform::parse_swap_header;
+use crate::platform::{CreateSwapProgress, StepStatus, parse_swap_header};
 
 // ── Pure helper functions ─────────────────────────────────────────────────────
 
@@ -68,8 +64,8 @@ impl Allocator {
 
 // ── Background step runner ────────────────────────────────────────────────────
 
-/// Run all create-swap steps in `spawn_blocking`. Sends `CreateSwapStepUpdate`
-/// for each step transition. On `activate_only`, skips to Step 6 (swapon).
+/// Run all create-swap steps. Reports progress via the `on_progress` callback.
+/// On `activate_only`, skips to Step 6 (swapon).
 #[allow(clippy::too_many_arguments)]
 pub fn run_create_swap_steps(
     path: PathBuf,
@@ -77,10 +73,10 @@ pub fn run_create_swap_steps(
     priority: i16,
     activate_after: bool,
     activate_only: bool,
-    tx: UnboundedSender<Action>,
+    on_progress: &dyn Fn(CreateSwapProgress),
 ) {
     let send = |idx: usize, status: StepStatus| {
-        let _ = tx.send(Action::CreateSwapStepUpdate { index: idx, status });
+        on_progress(CreateSwapProgress::StepUpdate { index: idx, status });
     };
 
     // activate_only path: go straight to Step 6 (swapon).
@@ -110,7 +106,7 @@ pub fn run_create_swap_steps(
         TargetFileCheck::DoesNotExist => send(1, StepStatus::Done),
         TargetFileCheck::AlreadySwap { size } => {
             send(1, StepStatus::Done);
-            let _ = tx.send(Action::OpenConfirmActivateOnly {
+            on_progress(CreateSwapProgress::ConfirmActivateOnly {
                 path: path.clone(),
                 size_bytes: size,
             });

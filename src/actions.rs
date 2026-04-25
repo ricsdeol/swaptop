@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use crate::create_swap::{CreateSwapField, StepStatus};
-use crate::platform::MemSnapshot;
+use crate::create_swap::CreateSwapField;
+use crate::platform::{CreateSwapProgress, MemSnapshot};
 
 // ── Phase 4 types ─────────────────────────────────────────────────────────────
 
@@ -87,8 +87,7 @@ pub enum Action {
     CreateSwapToggleUnit,
     CreateSwapToggleActivate,
     CreateSwapSubmit { activate_only: bool },
-    OpenConfirmActivateOnly { path: PathBuf, size_bytes: u64 },
-    CreateSwapStepUpdate { index: usize, status: StepStatus },
+    CreateSwapProgress(CreateSwapProgress),
 
     // Phase 6 — path autocomplete
     CreateSwapSetCompletions(Vec<String>),
@@ -152,14 +151,14 @@ mod tests {
     }
 
     #[test]
-    fn create_swap_step_update_carries_index_and_status() {
-        use crate::create_swap::StepStatus;
-        let a = Action::CreateSwapStepUpdate {
+    fn create_swap_progress_carries_step_update() {
+        use crate::platform::StepStatus;
+        let a = Action::CreateSwapProgress(CreateSwapProgress::StepUpdate {
             index: 3,
             status: StepStatus::Done,
-        };
+        });
         match a {
-            Action::CreateSwapStepUpdate { index, status } => {
+            Action::CreateSwapProgress(CreateSwapProgress::StepUpdate { index, status }) => {
                 assert_eq!(index, 3);
                 assert_eq!(status, StepStatus::Done);
             }
