@@ -59,7 +59,10 @@ pub enum Action {
     DeviceDown,
     RequestConfirm(DeviceOpKind),
     CancelConfirm,
-    ExecuteDeviceOp { path: PathBuf, kind: DeviceOpKind },
+    ExecuteDeviceOp {
+        path: PathBuf,
+        kind: DeviceOpKind,
+    },
     DeviceOpUpdate(DeviceOp),
     NavigateUp,
     NavigateDown,
@@ -75,7 +78,9 @@ pub enum Action {
     CreateSwapInputEvent(crossterm::event::Event),
     CreateSwapToggleUnit,
     CreateSwapToggleActivate,
-    CreateSwapSubmit { activate_only: bool },
+    CreateSwapSubmit {
+        activate_only: bool,
+    },
     CreateSwapProgress(CreateSwapProgress),
     CreateSwapSetCompletions(Vec<String>),
     CreateSwapCompletionMove(i16),
@@ -84,16 +89,26 @@ pub enum Action {
     RequestConfirmOffDelete,
     ToggleConfirmDeleteFile,
     CancelConfirmOffDelete,
-    #[allow(dead_code)] // wired in Task 8
-    OpenProcessDetail { pid: u32 },
-    #[allow(dead_code)] // wired in Task 8
+    #[allow(dead_code)] // constructed in tests
+    OpenProcessDetail {
+        pid: u32,
+    },
+    #[allow(dead_code)] // constructed in tests
     CloseProcessDetail,
-    #[allow(dead_code)] // wired in Task 8
-    ConfirmKillProcess { pid: u32 },
+    #[allow(dead_code)] // constructed in tests
+    ConfirmKillProcess {
+        pid: u32,
+    },
     #[allow(dead_code)] // intercepted by main.rs, never reaches reducer
-    KillProcess { pid: u32 },
-    #[allow(dead_code)] // wired in Task 8
-    KillProcessResult { pid: u32, success: bool, msg: Option<String> },
+    KillProcess {
+        pid: u32,
+    },
+    #[allow(dead_code)] // constructed in tests
+    KillProcessResult {
+        pid: u32,
+        success: bool,
+        msg: Option<String>,
+    },
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -169,7 +184,10 @@ mod tests {
 
     #[test]
     fn close_process_detail_is_constructible() {
-        assert!(matches!(Action::CloseProcessDetail, Action::CloseProcessDetail));
+        assert!(matches!(
+            Action::CloseProcessDetail,
+            Action::CloseProcessDetail
+        ));
     }
 
     #[test]
@@ -180,7 +198,11 @@ mod tests {
 
     #[test]
     fn kill_process_result_has_fields() {
-        let a = Action::KillProcessResult { pid: 1, success: false, msg: Some("err".into()) };
+        let a = Action::KillProcessResult {
+            pid: 1,
+            success: false,
+            msg: Some("err".into()),
+        };
         match a {
             Action::KillProcessResult { pid, success, msg } => {
                 assert_eq!(pid, 1);
