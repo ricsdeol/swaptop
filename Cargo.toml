@@ -9,7 +9,7 @@ crossterm   = { version = "0.29.0", features = ["event-stream"] }
 tokio       = { version = "1.51.1", features = ["macros", "rt-multi-thread", "time", "sync", "signal"] }
 tokio-util  = "0.7.18"
 futures     = "0.3.32"
-sysinfo     = "0.38.4"
+sysinfo     = "0.39.1"
 nix         = { version = "0.31.2", features = ["fs", "process", "signal", "mount", "user"] }
 color-eyre  = "0.6.5"
 human_bytes = "0.4.3"
